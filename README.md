@@ -1,6 +1,4 @@
-Here are tools to handlw Windows Shadowcopy more efficient. Or at all, since Microsoft removed the Config-GUI tools from Windows 10 and Windows 11.
-
-
+Here are tools to handle Windows Shadowcopy more efficient. Or at all, since Microsoft removed the Config-GUI tools from Windows 10 and Windows 11.
 
 # ShadowCopyCleanUpJob.ps1
 
