@@ -1,6 +1,6 @@
 Here are tools to handle Windows Shadowcopy more efficient. Or at all, since Microsoft removed the gonfig-GUI tools from Windows 10 and Windows 11.
 
-# ShadowCopyCleanUpJob.ps1
+# ShadowCopyJob.ps1
 
 This script is for a job to create shadowcopies. It has two major modes of operation: Interactive, aka manually via right-click -> "Run with PowerShell", and from the task sheduler.
 
