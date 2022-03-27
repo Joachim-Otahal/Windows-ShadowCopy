@@ -1,5 +1,16 @@
 Here are tools to handle Windows Shadowcopy more efficient. Or at all, since Microsoft removed the gonfig-GUI tools from Windows 10 and Windows 11.
 
+# ShadowCopyConfig.ps1
+
+This is the config tool, in the end replaces the former VSSUIRUN which is still on Server, but not on client OS.
+
+### Usage
+
+Run with right-click -> "Run with PowerShell". It will ask for evelation when not yet ran with admin rights.
+* It will show a menu of all local drives which have a drive letter.
+* You can browse the shadocopies, and it will show the "internal path" to access the shadowconfig, for example "\\localhost\F$\@GMT-2022.03.26-07.05.16" which can be used directly in CMD and Powershell.
+* You can activate, deactivate, selectively delete and set the maximum space used for shadowcopies.
+
 # ShadowCopyJob.ps1
 
 This script is for a job to create shadowcopies. It has two major modes of operation: Interactive, aka manually via right-click -> "Run with PowerShell", and from the task sheduler.
