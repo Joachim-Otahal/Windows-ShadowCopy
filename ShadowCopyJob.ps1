@@ -172,31 +172,33 @@ foreach ($Volume in $Volumes) {
     $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) |
         Select-Object *,@{Name="InstallDateUTC";Expression={$_.InstallDate.ToUniversalTime()}},@{Name="InstallDateUTCDateOnly";Expression={$_.InstallDate.ToUniversalTime() | 
         Get-Date -Format yyyy-MM-dd | Get-Date}} | Sort-Object InstallDate
-
-    # After $KeepDaily days: Keep only last schadowcopy of the day, after eight days keep only even days
-    for ($AddDays = -$KeepDaily; $CurrentTimeUTCDateOnly.AddDays($AddDays+1) -gt $ShadowCopyList[0].InstallDateUTCDateOnly ; $AddDays--) {
-        # Wenn > $AddDays Tage alt und mehr als ein schadowcopy da dann nuke alles vor den letzten schadowcopy am Tag.
-        $ShadowCopyPerDay = $ShadowCopyList.Where({$_.InstallDateUTCDateOnly -eq $CurrentTimeUTCDateOnly.AddDays($AddDays)})
-        if ($ShadowCopyPerDay.Count -gt "0" ) {
-            $KeepNotify = $true
-            # Nuke all daily except the last of the day
-            for ($i = 0 ; $i+1 -lt $ShadowCopyPerDay.Count; $i++) {
-                Write-Verbose-and-Log "$($Volume.DriveLetter) $($ShadowCopyPerDay[$i].InstallDateUTC) Delete: More than $KeepDaily days old and we have $($ShadowCopyPerDay.Count) shadowcopies of that day."
-                $MaximumShadowCopiesVolume--
-                if ($Confirm) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[$i].ID)})[0] -Verbose}
+    
+    if ($ShadowCopyList.Count -gt 0) {
+        # After $KeepDaily days: Keep only last schadowcopy of the day, after eight days keep only even days
+        for ($AddDays = -$KeepDaily; $CurrentTimeUTCDateOnly.AddDays($AddDays+1) -gt $ShadowCopyList[0].InstallDateUTCDateOnly ; $AddDays--) {
+            # Wenn > $AddDays Tage alt und mehr als ein schadowcopy da dann nuke alles vor den letzten schadowcopy am Tag.
+            $ShadowCopyPerDay = $ShadowCopyList.Where({$_.InstallDateUTCDateOnly -eq $CurrentTimeUTCDateOnly.AddDays($AddDays)})
+            if ($ShadowCopyPerDay.Count -gt "0" ) {
+                $KeepNotify = $true
+                # Nuke all daily except the last of the day
+                for ($i = 0 ; $i+1 -lt $ShadowCopyPerDay.Count; $i++) {
+                    Write-Verbose-and-Log "$($Volume.DriveLetter) $($ShadowCopyPerDay[$i].InstallDateUTC) Delete: More than $KeepDaily days old and we have $($ShadowCopyPerDay.Count) shadowcopies of that day."
+                    $MaximumShadowCopiesVolume--
+                    if ($Confirm) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[$i].ID)})[0] -Verbose}
+                }
+                # Nuke of that day when "day of month" uneven and and older than $KeepEveryDay
+                # Nuke of that day when "day of month" is not every fourth and and older than $KeepEveryFourthDay
+                if ( ( $AddDays -le -$KeepEvenDay -and [int]($ShadowCopyPerDay[-1].InstallDateUTC.Day / 2) * 2 -ne [int]$ShadowCopyPerDay[-1].InstallDateUTC.Day ) -or
+                     ( $AddDays -le -$KeepEveryFourthDay -and [int]($ShadowCopyPerDay[-1].InstallDateUTC.Day / 4) * 4 -ne [int]$ShadowCopyPerDay[-1].InstallDateUTC.Day ) )  {
+                    Write-Verbose-and-Log "$($Volume.DriveLetter) $($ShadowCopyPerDay[-1].InstallDateUTC) Delete: More than $(-$AddDays+1) days old and uneven or not every fourth"
+                    $MaximumShadowCopiesVolume--
+                    $KeepNotify = $false
+                    if ($Confirm) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[-1].ID)})[0] -Verbose}
+                }
+                if ($KeepNotify) { Write-Verbose-and-Log "$($Volume.DriveLetter) $($ShadowCopyPerDay[-1].InstallDateUTC) Keeping!" }
+            } else {
+                Write-Verbose-and-Log "$($Volume.DriveLetter) $($CurrentTimeUTCDateOnly.AddDays($AddDays)) No shadowcopies found"
             }
-            # Nuke of that day when "day of month" uneven and and older than $KeepEveryDay
-            # Nuke of that day when "day of month" is not every fourth and and older than $KeepEveryFourthDay
-            if ( ( $AddDays -le -$KeepEvenDay -and [int]($ShadowCopyPerDay[-1].InstallDateUTC.Day / 2) * 2 -ne [int]$ShadowCopyPerDay[-1].InstallDateUTC.Day ) -or
-                 ( $AddDays -le -$KeepEveryFourthDay -and [int]($ShadowCopyPerDay[-1].InstallDateUTC.Day / 4) * 4 -ne [int]$ShadowCopyPerDay[-1].InstallDateUTC.Day ) )  {
-                Write-Verbose-and-Log "$($Volume.DriveLetter) $($ShadowCopyPerDay[-1].InstallDateUTC) Delete: More than $(-$AddDays+1) days old and uneven or not every fourth"
-                $MaximumShadowCopiesVolume--
-                $KeepNotify = $false
-                if ($Confirm) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[-1].ID)})[0] -Verbose}
-            }
-            if ($KeepNotify) { Write-Verbose-and-Log "$($Volume.DriveLetter) $($ShadowCopyPerDay[-1].InstallDateUTC) Keeping!" }
-        } else {
-            Write-Verbose-and-Log "$($Volume.DriveLetter) $($CurrentTimeUTCDateOnly.AddDays($AddDays)) No shadowcopies found"
         }
     }
     # Is the amount of shadowcopies still above MaximumShadowCopies? If yes, refresh shadowcopy list and remove those too many.
