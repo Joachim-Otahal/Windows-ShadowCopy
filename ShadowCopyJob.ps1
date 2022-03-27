@@ -134,8 +134,8 @@ $CurrentTimeUTCDateOnly=$CurrentTimeUTC | Get-Date -Format yyy-MM-dd | Get-Date
 # Get Info
 
 $ShadowStorage = Get-CimInstance Win32_ShadowStorage
-$VolumesWithoutShadows =  (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object DriveLetter
-$Volumes = (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -contains $_.DeviceID}) | Sort-Object DriveLetter
+$VolumesWithoutShadows =  (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object Name
+$Volumes = (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -contains $_.DeviceID}) | Sort-Object Name
 $ShadowCopyFullList = Get-CimInstance Win32_ShadowCopy
 if ([Environment]::UserInteractive) {
     foreach ($Volume in $VolumesWithoutShadows.Where({$_.DriveLetter -ne $null})) {
@@ -155,18 +155,18 @@ if ([Environment]::UserInteractive) {
         }
         # 89 = yes, 74 = ja
         if ($key.VirtualKeyCode -eq 89 -or $key.VirtualKeyCode -eq 74) {
-            Write-Verbose-and-Log "$($Volume.DriveLetter) Create initial shadowcopy"
-            Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume="$($Volume.DriveLetter)\"} -Verbose
+            Write-Verbose-and-Log "$($Volume.Name) Create initial shadowcopy"
+            Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume="$($Volume.Name)"} -Verbose
         } else {
-            Write-Verbose-and-Log "Volume $($Volume.DriveLetter) shadowcopy settings not changed."
+            Write-Verbose-and-Log "Volume $($Volume.Name) shadowcopy settings not changed."
         }
     }
 }
 
 foreach ($Volume in $Volumes) {
     $MaximumShadowCopiesVolume=$MaximumShadowCopies
-    Write-Verbose-and-Log "################ $($Volume.DriveLetter) ################"
-    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.DriveLetter) will be deleted") }
+    Write-Verbose-and-Log "################ $($Volume.Name) ################"
+    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.Name) will be deleted") }
     # Clean up old schadowcopies
     # We add a "only Day exact, no time" field as System.DateTime datafield, force sort by date newest at the end (should be anyway, but I don't trust it)
     $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) |
@@ -182,7 +182,7 @@ foreach ($Volume in $Volumes) {
                 $KeepNotify = $true
                 # Nuke all daily except the last of the day
                 for ($i = 0 ; $i+1 -lt $ShadowCopyPerDay.Count; $i++) {
-                    Write-Verbose-and-Log "$($Volume.DriveLetter) $($ShadowCopyPerDay[$i].InstallDateUTC) Delete: More than $KeepDaily days old and we have $($ShadowCopyPerDay.Count) shadowcopies of that day."
+                    Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[$i].InstallDateUTC) Delete: More than $KeepDaily days old and we have $($ShadowCopyPerDay.Count) shadowcopies of that day."
                     $MaximumShadowCopiesVolume--
                     if ($Confirm) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[$i].ID)})[0] -Verbose}
                 }
@@ -190,14 +190,14 @@ foreach ($Volume in $Volumes) {
                 # Nuke of that day when "day of month" is not every fourth and and older than $KeepEveryFourthDay
                 if ( ( $AddDays -le -$KeepEvenDay -and [int]($ShadowCopyPerDay[-1].InstallDateUTC.Day / 2) * 2 -ne [int]$ShadowCopyPerDay[-1].InstallDateUTC.Day ) -or
                      ( $AddDays -le -$KeepEveryFourthDay -and [int]($ShadowCopyPerDay[-1].InstallDateUTC.Day / 4) * 4 -ne [int]$ShadowCopyPerDay[-1].InstallDateUTC.Day ) )  {
-                    Write-Verbose-and-Log "$($Volume.DriveLetter) $($ShadowCopyPerDay[-1].InstallDateUTC) Delete: More than $(-$AddDays+1) days old and uneven or not every fourth"
+                    Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[-1].InstallDateUTC) Delete: More than $(-$AddDays+1) days old and uneven or not every fourth"
                     $MaximumShadowCopiesVolume--
                     $KeepNotify = $false
                     if ($Confirm) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[-1].ID)})[0] -Verbose}
                 }
-                if ($KeepNotify) { Write-Verbose-and-Log "$($Volume.DriveLetter) $($ShadowCopyPerDay[-1].InstallDateUTC) Keeping!" }
+                if ($KeepNotify) { Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[-1].InstallDateUTC) Keeping!" }
             } else {
-                Write-Verbose-and-Log "$($Volume.DriveLetter) $($CurrentTimeUTCDateOnly.AddDays($AddDays)) No shadowcopies found"
+                Write-Verbose-and-Log "$($Volume.Name) $($CurrentTimeUTCDateOnly.AddDays($AddDays)) No shadowcopies found"
             }
         }
     }
@@ -205,21 +205,21 @@ foreach ($Volume in $Volumes) {
     if ($MaximumShadowCopiesVolume -lt 0 -or $ShadowCopyList.Count -gt $MaximumShadowCopies) {
         $ShadowCopyFullList = Get-CimInstance Win32_ShadowCopy
         $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) | Sort-Object InstallDate
-        Write-Verbose-and-Log "$($Volume.DriveLetter) Delete: Shadowcopies $($ShadowCopyList[0..($ShadowCopyList.Count - $MaximumShadowCopies - 1)].InstallDate) exceeding the maximum number of $MaximumShadowCopies."
+        Write-Verbose-and-Log "$($Volume.Name) Delete: Shadowcopies $($ShadowCopyList[0..($ShadowCopyList.Count - $MaximumShadowCopies - 1)].InstallDate) exceeding the maximum number of $MaximumShadowCopies."
         if ($Confirm) {
             for ($i = 0 ; $i -lt $MaximumShadowCopies - 1; $i++) {
                 Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $ShadowCopyList[$i].ID})[0] -Verbose
             }
         }
     }
-    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.DriveLetter) have been deleted") }
+    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.Name) have been deleted") }
 
     # Create a new schadowcopy
     if ($CreateShadowCopy) {
-        Write-Verbose-and-Log "$($Volume.DriveLetter) Create new shadowcopy"
-        Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume="$($Volume.DriveLetter)\"} -Verbose
+        Write-Verbose-and-Log "$($Volume.Name) Create new shadowcopy"
+        Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume="$($Volume.Name)"} -Verbose
     } else {
-        Write-Verbose-and-Log ('-CreateSchadowCopy is not set to $true, no new shadowcopy for ' + "$($Volume.DriveLetter) has been created")
+        Write-Verbose-and-Log ('-CreateSchadowCopy is not set to $true, no new shadowcopy for ' + "$($Volume.Name) has been created")
     }
 }
 
