@@ -18,6 +18,9 @@
 
     In Windows 10 Microsoft removed the GUI to activate shadowcopy, use this command in an administrative powershell to activate and create the first shadowcopy (or run this script, it will ask):
     Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume="J:\"}
+
+    An extended config tool is ShadowCopyConfig.ps1 available from https://github.com/Joachim-Otahal/Windows-ShadowCopy ,
+
 .PARAMETER KeepDaily
     Only remove several-times-per-day schadowcopies if they are older than this amount of days.
 .PARAMETER KeepEvenDay
@@ -35,9 +38,9 @@
 .EXAMPLE
     ShadowCopyCleanUpJob.ps1 -KeepDaily 1 -KeepEvenDay 4 -KeepEveryFourthDay 8 -MaximumShadowCopies 15 -Confirm:$true -CreateShadowCopy:$true
 .NOTES
-    Author: Joachim Otahal / jou@gmx.net / Joachim.Otahal@datagroup.de
-#.LINK
-#    .
+    Author: Joachim Otahal / jou@gmx.net / Joachim.Otahal@gmx.net
+.LINK
+    https://github.com/Joachim-Otahal/Windows-ShadowCopy / https://joumxyzptlk.de
 #>
 
 
