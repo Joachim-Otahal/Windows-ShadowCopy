@@ -133,7 +133,8 @@ $CurrentTimeUTCDateOnly=$CurrentTimeUTC | Get-Date -Format yyy-MM-dd | Get-Date
 
 # Get Info
 
-$ShadowStorage = Get-CimInstance Win32_ShadowStorage
+# we have to force the array, with only one entry it does not array it
+$ShadowStorage = @(Get-CimInstance Win32_ShadowStorage)
 $VolumesWithoutShadows =  (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object Name
 $Volumes = (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -contains $_.DeviceID}) | Sort-Object Name
 $ShadowCopyFullList = Get-CimInstance Win32_ShadowCopy
