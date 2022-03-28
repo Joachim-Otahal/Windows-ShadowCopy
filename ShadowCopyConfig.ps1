@@ -257,7 +257,7 @@ do {
             if ($inputhost -eq "R") {
                 $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID })
                 for ( $i = 0 ; $i -lt $ShadowCopyList.Count; $i++ ){
-                    Write-Host "Shadowcopy Number $i : $($ShadowCopyList[$i].InstallDate | get-date -format "yyyy-MM-dd hh:HH:ss")"
+                    Write-Host "Shadowcopy Number $i : $($ShadowCopyList[$i].InstallDate | get-date -format "yyyy-MM-dd HH:mm:ss")"
                 }
                 $inputhost2 = (Read-Host "Choose which shadowcopy to delete. Enter nothing to return") -replace '[^0-9]',''
                 if ($inputhost2 -ne "") {
@@ -273,7 +273,7 @@ do {
                     $singleUTC = $ShadowCopyList[$i].InstallDate.ToUniversalTime()
                     $singleGMTString = "@GMT-$($singleUTC.Year).$($singleUTC.Month.ToString().PadLeft(2,"0")).$($singleUTC.Day.ToString().PadLeft(2,"0"))-$($singleUTC.Hour.ToString().PadLeft(2,"0")).$($singleUTC.Minute.ToString().PadLeft(2,"0")).$($singleUTC.Second.ToString().PadLeft(2,"0"))"
                     $ShadowCopyList[$i].DirectPath = "\\localhost\" + $VolumeToChange.Substring(0,1) + '$\' + $singleGMTString
-                    Write-Host "Shadowcopy Number $i : $($ShadowCopyList[$i].InstallDate | get-date -format "yyyy-MM-dd hh:HH:ss") : Direct Path for CMD/Powershell/Explorer: $($ShadowCopyList[$i].DirectPath)"
+                    Write-Host "Shadowcopy Number $i : $($ShadowCopyList[$i].InstallDate | get-date -format "yyyy-MM-dd HH:mm:ss") : Direct Path for CMD/Powershell/Explorer: $($ShadowCopyList[$i].DirectPath)"
                 }
                 $inputhost2 = (Read-Host "Choose which shadowcopy to open. Enter nothing to return") -replace '[^0-9]',''
                 if ($inputhost2 -ne "") {
