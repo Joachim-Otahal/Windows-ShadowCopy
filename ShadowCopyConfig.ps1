@@ -72,6 +72,8 @@ $CurrentTimeUTCDateOnly=$CurrentTimeUTC | Get-Date -Format yyy-MM-dd | Get-Date
 # Get Info
 # Yes, re-read everything every time since we allow a lot of changes
 
+Write-Verbose "Gathering information..." -Verbose
+
 do {
     # we have to force the array, with only one entry it does not array it
     $ShadowStorage = @(Get-CimInstance Win32_ShadowStorage)
@@ -216,15 +218,22 @@ do {
             }
             if ($inputhost -eq "D") {
                 $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID })
-                for ( $i = 0 ; $i -lt $ShadowCopyList.Count; $i++) {
-                    Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyList[$i].ID)})[0] -Verbose | Out-String
+                Write-Host -BackgroundColor Red "Delete $($ShadowCopyList.Count) shadowcopies and deactivate for Volume $($VolumeToChange) (y/n):" -NoNewline
+                $inputhost2 = ((Read-Host) -replace '[^yY]','').ToLower()
+                if ($inputhost2 -eq "Y") {
+                    for ( $i = 0 ; $i -lt $ShadowCopyList.Count; $i++) {
+                        Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyList[$i].ID)})[0] -Verbose | Out-String
+                    }
+                    try {
+                        Remove-CimInstance -InputObject $ShadowStorage.Where({$_.Volume.DeviceID -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID }) -ErrorAction Stop | Out-String
+                    } catch {
+                        Write-Host -BackgroundColor DarkGreen " Informational: Shadowcopy config for $VolumeToChange was not persistent. "
+                    }
+                    Write-Host "All shadowcopies von $VolumeToChange deleted and shadowcopy for $VolumeToChange deactivated."
+                } else {
+                    Write-Host "Nothing was deleted, nothing got deactivated."
                 }
-                try {
-                    Remove-CimInstance -InputObject $ShadowStorage.Where({$_.Volume.DeviceID -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID }) -ErrorAction Stop | Out-String
-                } catch {
-                    Write-Host -BackgroundColor DarkGreen " Informational: Shadowcopy config for $VolumeToChange was not persistent. "
-                }
-                Write-Host "All shadowcopies von $VolumeToChange deleted and shadowcopy for $VolumeToChange deactivated."
+
             }
             if ($inputhost -eq "M") {
                 $ShadowCopyMaxSize = [UInt64]($Volumes.Where({$_.Name -eq $VolumeToChange })[0].MaxSpace)
