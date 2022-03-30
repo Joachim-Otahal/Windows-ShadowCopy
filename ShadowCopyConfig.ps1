@@ -204,7 +204,7 @@ do {
             Write-Host -BackgroundColor DarkRed " That Volume does not exist "
         } else {
             Write-Host -BackgroundColor DarkGreen " Selected Volume $VolumeToChange "
-            $inputhost = ((Read-Host "Choose shadowcopy action for $VolumeToChange : (a)vtivate, (d)eactivate, (m)aximum size, (c)reate, (b)rowse a single shadowcopy, (r)remove single shadowcopy, enter nothing to main menu") -replace '[^a-zA-Z]','').ToUpper()
+            $inputhost = ((Read-Host "Choose shadowcopy action for $VolumeToChange :`n(a)vtivate, (d)eactivate, (m)aximum size, (c)reate,`n(b)rowse a single shadowcopy, (r)emove a single shadowcopy, enter nothing to main menu") -replace '[^a-zA-Z]','').ToUpper()
             # Yes yes, I could use switch. SU....
             if ($inputhost -eq "A") {
                 Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume=$VolumeToChange} -Verbose | Out-String
