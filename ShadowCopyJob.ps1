@@ -61,7 +61,7 @@ param (
     [int]$KeepEvenDay = 8,
     [int]$KeepEveryFourthDay = 16,
     [int]$MaximumShadowCopies = 65535,
-    [bool]$Confirm = $false,
+    [bool]$Confirm = $true,
     [bool]$CreateShadowCopy = $false,
     [string]$LogPath,
     [int]$LogDays = 30
@@ -114,7 +114,7 @@ try {
 } catch {
     Write-Verbose-and-Log "Sheduled Task not found, creating one with five times per day - but deactivated."
     $TaskDescription = "ShadowCopyJob - Task created by script on $TimeStamp `nGreetings from Joachim Otahal, Germany."
-    $TaskArgument = '-Command "& '+ "'" + $MyInvocation.MyCommand.Path + "'" + ' -Confirm:$true -CreateShadowCopy:$true -MaximumShadowCopies 40 -LogPath ' + "'" + $MyInvocation.MyCommand.Path.TrimEnd($MyInvocation.MyCommand.Name) + "'" + '"'
+    $TaskArgument = '-Command "& '+ "'" + $MyInvocation.MyCommand.Path + "'" + ' -Confirm:$false -CreateShadowCopy:$true -MaximumShadowCopies 40 -LogPath ' + "'" + $MyInvocation.MyCommand.Path.TrimEnd($MyInvocation.MyCommand.Name) + "'" + '"'
     $TaskAction = New-ScheduledTaskAction -Execute '%windir%\System32\WindowsPowerShell\v1.0\Powershell.exe' -Argument $TaskArgument
     #$TaskTrigger =  New-ScheduledTaskTrigger -Once -At "2000-01-01 00:05" -RepetitionInterval "06:00" -RandomDelay "00:05"
     $TaskTrigger =  @(
@@ -175,7 +175,7 @@ if ([Environment]::UserInteractive) {
 foreach ($Volume in $Volumes) {
     $MaximumShadowCopiesVolume=$MaximumShadowCopies
     Write-Verbose-and-Log "################ $($Volume.Name) ################"
-    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.Name) will be deleted") }
+    if ($Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $false, no schadowcopies for ' + "$($Volume.Name) will be deleted") }
     # Clean up old schadowcopies
     # We add a "only Day exact, no time" field as System.DateTime datafield, force sort by date newest at the end (should be anyway, but I don't trust it)
     $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) |
@@ -221,7 +221,7 @@ foreach ($Volume in $Volumes) {
             }
         }
     }
-    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.Name) have been deleted") }
+    if ($Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $false, no schadowcopies for ' + "$($Volume.Name) have been deleted") }
 
     # Create a new schadowcopy
     if ($CreateShadowCopy) {
