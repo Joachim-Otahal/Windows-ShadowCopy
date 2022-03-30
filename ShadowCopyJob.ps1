@@ -31,6 +31,8 @@
     Only keep these number of ShadowCopies. Default: Keep all. The value in the registry overrides this setting.
 .PARAMETER LogPath
     The PATH, not file, where to store the log. Each day a new log is created.
+.PARAMETER LogDays
+    How many days of logfiles to keep (default 30 days).
 .PARAMETER Confirm
     If not set to $true it will only show which shaodowcopies would be deleted. Default is $false.
 .PARAMETER CreateShadowCopy
@@ -52,6 +54,7 @@
 
 # Versionlog:
 # 1.0 Joachim Otahal 19th to 23rd March 2022
+# 1.1 addes log cleanup and other finetunings
 
 param (
     [int]$KeepDaily = 2,
@@ -60,7 +63,9 @@ param (
     [int]$MaximumShadowCopies = 65535,
     [bool]$Confirm = $false,
     [bool]$CreateShadowCopy = $false,
-    [string]$LogPath
+    [string]$LogPath,
+    [int]$LogDays = 30
+
 )
 
 #################### Konstants
@@ -225,6 +230,11 @@ foreach ($Volume in $Volumes) {
     } else {
         Write-Verbose-and-Log ('-CreateSchadowCopy is not set to $true, no new shadowcopy for ' + "$($Volume.Name) has been created")
     }
+}
+
+# Clean logfiles
+if ($LogPath.Length -gt 1) {
+    (Get-ChildItem $LogPath.TrimEnd("\")).Where({$_.Name -ilike "$($ScriptName.TrimEnd('.ps1'))_????-??-??.log" -and $_.LastWriteTime.AddDays($LogDays) -lt $TimeStamp}) | Remove-Item -Force
 }
 
 if ([Environment]::UserInteractive) {
