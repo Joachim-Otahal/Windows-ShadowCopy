@@ -17,7 +17,8 @@
 #>
 
 # Versionlog:
-# 0.1 Joachim Otahal 25th to 27th March 2022
+# 0.1 Inital version Joachim Otahal March 2022
+# 0.2 A little cleanup, Menu adjustment for 80 character screen, browse shows ISO8601 like date, path copy to clipboard
 
 #################### Konstants
 
@@ -53,21 +54,6 @@ if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
     #Start-Sleep 20
     break
 }
-
-################### Log init with date-time in front.
-
-#################### If there is no sheduled task, create one.
-#################### But create it as "Deactivated", to be activated by an admin when needed.
-
-
-# Init log header
-
-# Write-Verbose-and-Log "########################################################"
-# Write-Verbose-and-Log "################## $($TimeStamp | Get-Date -Format 'yyyy-MM-dd HH:mm:ss') #################"
-
-# Current Time as UTC
-$CurrentTimeUTC = (Get-Date).ToUniversalTime()
-$CurrentTimeUTCDateOnly=$CurrentTimeUTC | Get-Date -Format yyy-MM-dd | Get-Date
 
 # Get Info
 # Yes, re-read everything every time since we allow a lot of changes
@@ -219,7 +205,7 @@ do {
             if ($inputhost -eq "D") {
                 $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID })
                 Write-Host -BackgroundColor Red "Delete $($ShadowCopyList.Count) shadowcopies and deactivate for Volume $($VolumeToChange) (y/n):" -NoNewline
-                $inputhost2 = ((Read-Host) -replace '[^yY]','').ToLower()
+                $inputhost2 = ((Read-Host) -replace '[^yY]','').ToUpper()
                 if ($inputhost2 -eq "Y") {
                     for ( $i = 0 ; $i -lt $ShadowCopyList.Count; $i++) {
                         Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyList[$i].ID)})[0] -Verbose | Out-String
@@ -288,8 +274,11 @@ do {
                 if ($inputhost2 -ne "") {
                     $inputhost2 = [int]$inputhost2
                     if ($inputhost2 -ge 0 -and $inputhost2 -lt $ShadowCopyList.Count) {
+                        Write-Host -BackgroundColor DarkGreen "Contents of $($ShadowCopyList[$inputhost2].DirectPath) at $($ShadowCopyList[$inputhost2].InstallDate | get-date -format "yyyy-MM-dd HH:mm:ss")"
                         Get-ChildItem -Path "$($ShadowCopyList[$inputhost2].DirectPath)"
                         & "$env:SystemRoot\Explorer.exe" "$($ShadowCopyList[$inputhost2].DirectPath)"
+                        Set-Clipboard -Value $ShadowCopyList[$inputhost2].DirectPath -Verbose
+                        Write-Host -BackgroundColor DarkGreen "Path $($ShadowCopyList[$inputhost2].DirectPath) has been copied to clipboard, ready to paste in Explorer/CMD/Powershell"
                     }
                 }
             }
