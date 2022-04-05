@@ -17,26 +17,80 @@
 #>
 
 # Versionlog:
-# 0.1 Inital version Joachim Otahal March 2022
-# 0.2 A little cleanup, Menu adjustment for 80 character screen, browse shows ISO8601 like date, path copy to clipboard
+# 0.1 March 2022 Inital version Joachim Otahal
+# 0.2            A little cleanup, Menu adjustment for 80 character screen, browse shows ISO8601 like date, path copy to clipboard
+# 0.3 April 2022 Handle volumes mounted in a directory correct, show number of shadowcopies, better menu formatting.
+#                Solving the problem to be unable to access the \\localhost\<drive>$\@GMT Path using:
+#                https://gist.github.com/jborean93/f60da33b08f8e1d5e0ef545b0a4698a0
+#                These Parts (c) 2019, Jordan Borean (@jborean93) <jborean93@gmail.com>
 
-#################### Konstants
+#### Typedefinition to NtFsControlFile/CreateFileW
+
+Add-Type -TypeDefinition @'
+using Microsoft.Win32.SafeHandles;
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+
+namespace Win32
+{
+    public class NativeHelpers
+    {
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IO_STATUS_BLOCK
+        {
+            public UInt32 Status;
+            public UInt32 Information;
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public struct NT_Trans_Data
+        {
+            public UInt32 NumberOfSnapShots;
+            public UInt32 NumberOfSnapShotsReturned;
+            public UInt32 SnapShotArraySize;
+            // Omit SnapShotMultiSZ because we manually get that string based on the struct results
+        }
+
+    }
+
+    public class NativeMethods
+    {
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern SafeFileHandle CreateFileW(
+            string lpFileName,
+            FileSystemRights dwDesiredAccess,
+            FileShare dwShareMode,
+            IntPtr lpSecurityAttributes,
+            FileMode dwCreationDisposition,
+            UInt32 dwFlagsAndAttributes,
+            IntPtr hTemplateFile);
+
+        [DllImport("ntdll.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern UInt32 NtFsControlFile(
+            SafeFileHandle hDevice,
+            IntPtr Event,
+            IntPtr ApcRoutine,
+            IntPtr ApcContext,
+            ref NativeHelpers.IO_STATUS_BLOCK IoStatusBlock,
+            UInt32 FsControlCode,
+            IntPtr InputBuffer,
+            UInt32 InputBufferLength,
+            IntPtr OutputBuffer,
+            UInt32 OutputBufferLength);
+
+        [DllImport("ntdll.dll")]
+        public static extern UInt32 RtlNtStatusToDosError(
+            UInt32 Status);
+    }
+}
+'@
+
+#### Konstants
 
 $TimeStamp = Get-Date
 $ScriptName = $MyInvocation.MyCommand.Name
-
-#################### Functions
-
-Function Write-Verbose-and-Log {
-    param (
-        [string]$Message
-    )
-    Write-Verbose $Message -Verbose
-    if ($LogPath) {
-        $LogPathFinal=$LogPath.TrimEnd("\") + "\" + $ScriptName.TrimEnd(".ps1") + "_" + ($TimeStamp | Get-Date -Format "yyyy-MM-dd") + ".log"
-        Out-File -LiteralPath $LogPathFinal -Append -InputObject $Message
-    }
-}
 
 #################### PSVerisonCheck
 
@@ -56,7 +110,7 @@ if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
 }
 
 # Get Info
-# Yes, re-read everything every time since we allow a lot of changes
+# Yes, re-read everything every time since we allow changes
 
 Write-Verbose "Gathering information..." -Verbose
 
@@ -64,33 +118,34 @@ do {
     # we have to force the array, with only one entry it does not array it
     $ShadowStorage = @(Get-CimInstance Win32_ShadowStorage)
     #$VolumesWithoutShadows =  (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object DriveLetter
-    $Volumes = (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $_.Name -ilike "?:*"}) | Select-Object Name,Label,DeviceID,Capacity,FreeSpace,Active,AllocatedSpace,MaxSpace,UsedSpace,Volume,DiffVolume | Sort-Object Name
+    $Volumes = @((Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $_.Name -ilike "?:*"}) | Select-Object Name,Label,DeviceID,Capacity,FreeSpace,Active,Shadows,AllocatedSpace,MaxSpace,UsedSpace,Volume,DiffVolume | Sort-Object Name)
     # Tabletitles
-    $Volumes += [pscustomobject]@{Name="Volume";Label="Label";DeviceID="";Capacity="";FreeSpace="";Active="Active";AllocatedSpace="Allocated";MaxSpace="Maximum";UsedSpace="";Volume="";DiffVolume=""}
+    $Volumes += [pscustomobject]@{Name="Volume";Label="Label";DeviceID="";Capacity="";FreeSpace="";Active="Active";Shadows="Shadows";AllocatedSpace="Allocated";MaxSpace="Maximum";UsedSpace="";Volume="";DiffVolume=""}
     # Tablecellwidth
-    $Volumes += [pscustomobject]@{Name=6;Label=5;DeviceID=0;Capacity=0;FreeSpace=0;Active=6;AllocatedSpace=9;MaxSpace=10;UsedSpace=0;Volume=0;DiffVolume=10}
+    $Volumes += [pscustomobject]@{Name=6;Label=5;DeviceID=0;Capacity=0;FreeSpace=0;Active=6;Shadows=7;AllocatedSpace=9;MaxSpace=10;UsedSpace=0;Volume=0;DiffVolume=10}
     #$Volumes += (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $_.Name -inotlike "?:*"})
-    $ShadowCopyFullList = Get-CimInstance Win32_ShadowCopy
+    $ShadowCopyFullList = @(Get-CimInstance Win32_ShadowCopy)
     
     # Fill in which volume has which settings
 
     for ( $i=0 ; $i -lt $Volumes.Count -2; $i++) {
         $ShadowStorageSingle = $ShadowStorage.Where({$_.Volume.DeviceID -eq $Volumes[$i].DeviceID})[0]
         if ($ShadowStorageSingle.Volume -ne $null) {
-            $Volumes[$i].Active = "Yes"
+            $Volumes[$i].Active         = "Yes"
+            $Volumes[$i].Shadows        = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes[$i].DeviceID}).count
             $Volumes[$i].AllocatedSpace = $ShadowStorageSingle.AllocatedSpace
-            $Volumes[$i].MaxSpace = $ShadowStorageSingle.MaxSpace
-            $Volumes[$i].UsedSpace = $ShadowStorageSingle.UsedSpace
-            $Volumes[$i].Volume = $ShadowStorageSingle.Volume
-            $Volumes[$i].DiffVolume = $ShadowStorageSingle.DiffVolume
+            $Volumes[$i].MaxSpace       = $ShadowStorageSingle.MaxSpace
+            $Volumes[$i].UsedSpace      = $ShadowStorageSingle.UsedSpace
+            $Volumes[$i].Volume         = $ShadowStorageSingle.Volume
+            $Volumes[$i].DiffVolume     = $ShadowStorageSingle.DiffVolume
         } else {
-            $Volumes[$i].Active = "No"
+            $Volumes[$i].Active         = "No"
         }
     }
     
+    # Can be done more elegant, but not today :D
     # calculate cell width
     
-    $Volumes[-1] = [pscustomobject]@{Name=6;Label=5;DeviceID=0;Capacity=0;FreeSpace=0;Active=6;AllocatedSpace=9;MaxSpace=10;UsedSpace=0;Volume=0;DiffVolume=10}
     for ( $i=0 ; $i -lt $Volumes.Count -2; $i++) {
         $length = $Volumes[$i].Name.length
         if ($length -gt $Volumes[-1].Name          ) { $Volumes[-1].Name           = $length }
@@ -121,6 +176,7 @@ do {
     $outputstring = "#"*($Volumes[-1].Name +3) +
                     "#"*($Volumes[-1].Label +3) +
                     "#"*($Volumes[-1].Active +3) +
+                    "#"*($Volumes[-1].Shadows +3) +
                     "#"*($Volumes[-1].AllocatedSpace +3) +
                     "#"*($Volumes[-1].MaxSpace +3) +
                     "#"*($Volumes[-1].DiffVolume +4)
@@ -128,6 +184,7 @@ do {
     $outputstring = "# Volume" + " "*($Volumes[-1].Name -5) +
                     "# Label" + " "*($Volumes[-1].Label -4) +
                     "# Active" + " "*($Volumes[-1].Active -5) +
+                    "# Shadows" + " "*($Volumes[-1].Shadows -6) +
                     "# Allocated" + " "*($Volumes[-1].AllocatedSpace -8) +
                     "# Maximum" + " "*($Volumes[-1].MaxSpace -6) +
                     "# DiffVolume" + " "*($Volumes[-1].DiffVolume -9) + "#"
@@ -145,6 +202,10 @@ do {
         $outputstring = $outputstring + " "*($Volumes[-1].Active - $outputstring.Length+3)
         Write-Host $outputstring -NoNewline
     
+        $outputstring = "# $($Volumes[$i].Shadows)"
+        $outputstring = $outputstring + " "*($Volumes[-1].Shadows - $outputstring.Length+3)
+        Write-Host $outputstring -NoNewline
+
         $outputstring = "# $([UInt64]($Volumes[$i].AllocatedSpace / 1073741824)) GB"
         $outputstring = $outputstring + " "*($Volumes[-1].AllocatedSpace - $outputstring.Length+3)
         Write-Host $outputstring -NoNewline
@@ -175,24 +236,32 @@ do {
     $outputstring = "#"*($Volumes[-1].Name +3) +
                     "#"*($Volumes[-1].Label +3) +
                     "#"*($Volumes[-1].Active +3) +
+                    "#"*($Volumes[-1].Shadows +3) +
                     "#"*($Volumes[-1].AllocatedSpace +3) +
                     "#"*($Volumes[-1].MaxSpace +3) +
                     "#"*($Volumes[-1].DiffVolume +4)
     Write-Host $outputstring
     
-    $VolumeToChange = ((Read-Host 'Change which volume (Driveletter, enter "exit" to quit)') -replace '[^a-zA-Z]','').ToUpper()
+    $VolumeToChange = ((Read-Host 'Change which volume (Driveletter or Mountpoint, enter "exit" to quit)') -replace '[^a-zA-Z:\\]','').ToUpper()
     if ($VolumeToChange -ne "EXIT" -and $VolumeToChange -ne "QUIT") {
-        if ($VolumeToChange.Length -ge 1) {
-            $VolumeToChange = $VolumeToChange.Substring(0,1)
-        } else {
-            $VolumeToChange = "dümmy"
-        }
-        $VolumeToChange = $Volumes.Where({$_.Name -match $VolumeToChange -and $_.DeviceID -ne ""}).Name
+        $VolumeToChange = $Volumes.Where({$_.Name -ilike "$VolumeToChange*" -and $_.DeviceID -ne ""})[0].Name
         if ($VolumeToChange -eq $null) {
             Write-Host -BackgroundColor DarkRed " That Volume does not exist "
         } else {
             Write-Host -BackgroundColor DarkGreen " Selected Volume $VolumeToChange "
-            $inputhost = ((Read-Host "Choose shadowcopy action for $VolumeToChange :`n(a)vtivate, (d)eactivate, (m)aximum size, (c)reate,`n(b)rowse a single shadowcopy, (r)emove a single shadowcopy, enter nothing to main menu") -replace '[^a-zA-Z]','').ToUpper()
+            Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "A"
+            Write-Host -NoNewline "ctivate, "
+            Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "d"
+            Write-Host -NoNewline "eactivate, "
+            Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "m"
+            Write-Host -NoNewline "aximum size, "
+            Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "c"
+            Write-Host "reate," -NoNewline
+            Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "o"
+            Write-Host "pen or " -NoNewline
+            Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "r"
+            Write-Host "emove a single shadowcopy.`nEnter nothing to get back to the main menu " -NoNewline
+            $inputhost = ((Read-Host "(a|d|m|c|o)") -replace '[^a-zA-Z]','').ToUpper()
             # Yes yes, I could use switch. SU....
             if ($inputhost -eq "A") {
                 Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume=$VolumeToChange} -Verbose | Out-String
@@ -262,18 +331,54 @@ do {
                     }
                 }
             }
-            if ($inputhost -eq "B") {
+            if ($inputhost -eq "B" -or $inputhost -eq "O") {
                 $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID }) | Select-Object *,DirectPath
+                $ShadowCopyBasePath = "\\localhost\" + $VolumeToChange.Substring(0,1) + '$'
                 for ( $i = 0 ; $i -lt $ShadowCopyList.Count; $i++ ){
-                    $singleUTC = $ShadowCopyList[$i].InstallDate.ToUniversalTime()
-                    $singleGMTString = "@GMT-$($singleUTC.Year).$($singleUTC.Month.ToString().PadLeft(2,"0")).$($singleUTC.Day.ToString().PadLeft(2,"0"))-$($singleUTC.Hour.ToString().PadLeft(2,"0")).$($singleUTC.Minute.ToString().PadLeft(2,"0")).$($singleUTC.Second.ToString().PadLeft(2,"0"))"
-                    $ShadowCopyList[$i].DirectPath = "\\localhost\" + $VolumeToChange.Substring(0,1) + '$\' + $singleGMTString
-                    Write-Host "Shadowcopy Number $i : $($ShadowCopyList[$i].InstallDate | get-date -format "yyyy-MM-dd HH:mm:ss") : Direct Path: $($ShadowCopyList[$i].DirectPath)"
+                    $SingleGMTString = "@GMT-" + $ShadowCopyList[$i].InstallDate.ToUniversalTime().ToString("yyyy.MM.dd-HH.mm.ss")
+                    $ShadowCopyList[$i].DirectPath = $ShadowCopyBasePath + '\' + $SingleGMTString
+                    Write-Host "$i $($ShadowCopyList[$i].InstallDate.ToString("yyyy-MM-dd HH:mm:ss")), Direct Path: $($ShadowCopyList[$i].DirectPath)"
                 }
                 $inputhost2 = (Read-Host "Choose which shadowcopy to open. Enter nothing to return") -replace '[^0-9]',''
                 if ($inputhost2 -ne "") {
                     $inputhost2 = [int]$inputhost2
                     if ($inputhost2 -ge 0 -and $inputhost2 -lt $ShadowCopyList.Count) {
+
+                        # Make the ShadowCopy actually accesible (Credits to Jordan Borean (@jborean93) <jborean93@gmail.com>)
+                        $Handle = [Win32.NativeMethods]::CreateFileW(
+                            $ShadowCopyBasePath,
+                            [System.Security.AccessControl.FileSystemRights]"ListDirectory, ReadAttributes, Synchronize",
+                            [System.IO.FileShare]::ReadWrite,
+                            [System.IntPtr]::Zero,
+                            [System.IO.FileMode]::Open,
+                            0x02000000,  # FILE_FLAG_BACKUP_SEMANTICS
+                            [System.IntPtr]::Zero
+                        )
+                        if ($Handle.IsInvalid) {
+                            $LastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                            $Msg = Get-LastWin32ExceptionMessage -ErrorCode $LastError
+                            Write-Error -Message "CreateFileW($ShadowCopyBasePath) failed - $Msg"
+                        }
+                        # Set the initial buffer size to the size of NT_Trans_Data + 2 chars. We do this so we can get the actual buffer
+                        # size that is contained in the NT_Trans_Data struct. A char is 2 bytes (UTF-16) and we expect 2 of them
+                        $TransDataSize = [System.Runtime.InteropServices.Marshal]::SizeOf([Type][Win32.NativeHelpers+NT_Trans_Data])
+                        $BufferSize = $TransDataSize + 4
+                        $OutBuffer = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($BufferSize)
+                        $IOBlock = New-Object -TypeName Win32.NativeHelpers+IO_STATUS_BLOCK
+                        # Actually triggering, after that the access works.
+                        $Result = [Win32.NativeMethods]::NtFsControlFile($Handle, [System.IntPtr]::Zero, [System.IntPtr]::Zero,
+                            [System.IntPtr]::Zero, [Ref]$IOBlock, 0x00144064, [System.IntPtr]::Zero, 0, $OutBuffer, $BufferSize)
+                        if ($Result -ne 0) {
+                            # If the result was not 0 we need to convert the NTSTATUS code to a Win32 code
+                            $Win32Error = [Win32.NativeMethods]::RtlNtStatusToDosError($Result)
+                            $Msg = Get-LastWin32ExceptionMessage -ErrorCode $Win32Error
+                            Write-Error -Message "NtFsControlFile failed - $Msg"
+                            return
+                        }
+                        # Cleanup handles
+                        [System.Runtime.InteropServices.Marshal]::FreeHGlobal($OutBuffer)
+                        $Handle.Dispose()
+
                         Write-Host -BackgroundColor DarkGreen "Contents of $($ShadowCopyList[$inputhost2].DirectPath) at $($ShadowCopyList[$inputhost2].InstallDate | get-date -format "yyyy-MM-dd HH:mm:ss")"
                         Get-ChildItem -Path "$($ShadowCopyList[$inputhost2].DirectPath)"
                         & "$env:SystemRoot\Explorer.exe" "$($ShadowCopyList[$inputhost2].DirectPath)"
