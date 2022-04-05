@@ -1,4 +1,4 @@
-Here are tools to handle Windows Shadowcopy more efficient. Or at all, since Microsoft removed the gonfig-GUI tools from Windows 10 and Windows 11.
+Here are tools to handle Windows Shadowcopy more efficient. Or at all, since Microsoft removed the config-GUI tools from Windows 10 and Windows 11.
 Both have been tested with Powershell 3.0 and 5.1 on Server 2008 (without R2), Vista up to Windows 11 and Server 2022. 
 
 # ShadowCopyConfig.ps1
