@@ -21,7 +21,7 @@ When run manually via  -> "Run with PowerShell" it will do following actions:
 * It will ask for evelation when needed.
 * It will check which volume have shadowcopy activated, and for those which don't have it activated it will ask whether it should activate shadowcopy. If you choose to activate it will create the first shadowcopy for that volume right away.
 * For all other volumes: It will show what it WOULD do, which shadowcopy it would clean up and which shadowcopy would be created.
-* It will check the task sheduler whether this script is already added as Task. If not it will create a task with the default settings, but leave it deactivated for your to check.
+* It will check the task sheduler whether this script is already added as task. If not it will create a task with the default settings, but leave it deactivated for your to check.
 
 You can inspect the created task before enabling it. If you move the script delete the task and re-run it, it will be recreatred.
 
