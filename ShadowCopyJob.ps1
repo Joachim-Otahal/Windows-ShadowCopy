@@ -18,9 +18,6 @@
 
     In Windows 10 Microsoft removed the GUI to activate shadowcopy, use this command in an administrative powershell to activate and create the first shadowcopy (or run this script, it will ask):
     Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume="J:\"}
-
-    An extended config tool is ShadowCopyConfig.ps1 available from https://github.com/Joachim-Otahal/Windows-ShadowCopy ,
-
 .PARAMETER KeepDaily
     Only remove several-times-per-day schadowcopies if they are older than this amount of days.
 .PARAMETER KeepEvenDay
@@ -31,8 +28,6 @@
     Only keep these number of ShadowCopies. Default: Keep all. The value in the registry overrides this setting.
 .PARAMETER LogPath
     The PATH, not file, where to store the log. Each day a new log is created.
-.PARAMETER LogDays
-    How many days of logfiles to keep (default 30 days).
 .PARAMETER Confirm
     If not set to $true it will only show which shaodowcopies would be deleted. Default is $false.
 .PARAMETER CreateShadowCopy
@@ -40,9 +35,9 @@
 .EXAMPLE
     ShadowCopyCleanUpJob.ps1 -KeepDaily 1 -KeepEvenDay 4 -KeepEveryFourthDay 8 -MaximumShadowCopies 15 -Confirm:$true -CreateShadowCopy:$true
 .NOTES
-    Author: Joachim Otahal / jou@gmx.net / Joachim.Otahal@gmx.net
-.LINK
-    https://github.com/Joachim-Otahal/Windows-ShadowCopy / https://joumxyzptlk.de
+    Author: Joachim Otahal / jou@gmx.net / Joachim.Otahal@datagroup.de
+#.LINK
+#    .
 #>
 
 
@@ -54,18 +49,15 @@
 
 # Versionlog:
 # 1.0 Joachim Otahal 19th to 23rd March 2022
-# 1.1 addes log cleanup and other finetunings
 
 param (
     [int]$KeepDaily = 2,
     [int]$KeepEvenDay = 8,
     [int]$KeepEveryFourthDay = 16,
     [int]$MaximumShadowCopies = 65535,
-    [bool]$Confirm = $true,
+    [bool]$Confirm = $false,
     [bool]$CreateShadowCopy = $false,
-    [string]$LogPath,
-    [int]$LogDays = 30
-
+    [string]$LogPath
 )
 
 #################### Konstants
@@ -114,7 +106,7 @@ try {
 } catch {
     Write-Verbose-and-Log "Sheduled Task not found, creating one with five times per day - but deactivated."
     $TaskDescription = "ShadowCopyJob - Task created by script on $TimeStamp `nGreetings from Joachim Otahal, Germany."
-    $TaskArgument = '-Command "& '+ "'" + $MyInvocation.MyCommand.Path + "'" + ' -Confirm:$false -CreateShadowCopy:$true -MaximumShadowCopies 40 -LogPath ' + "'" + $MyInvocation.MyCommand.Path.TrimEnd($MyInvocation.MyCommand.Name) + "'" + '"'
+    $TaskArgument = '-Command "& '+ "'" + $MyInvocation.MyCommand.Path + "'" + ' -Confirm:$true -CreateShadowCopy:$true -MaximumShadowCopies 40 -LogPath ' + "'" + $MyInvocation.MyCommand.Path.TrimEnd($MyInvocation.MyCommand.Name) + "'" + '"'
     $TaskAction = New-ScheduledTaskAction -Execute '%windir%\System32\WindowsPowerShell\v1.0\Powershell.exe' -Argument $TaskArgument
     #$TaskTrigger =  New-ScheduledTaskTrigger -Once -At "2000-01-01 00:05" -RepetitionInterval "06:00" -RandomDelay "00:05"
     $TaskTrigger =  @(
@@ -133,22 +125,21 @@ try {
 # Init log header
 
 Write-Verbose-and-Log "########################################################"
-Write-Verbose-and-Log "################## $($TimeStamp | Get-Date -Format 'yyyy-MM-dd HH:mm:ss') #################"
+Write-Verbose-and-Log "################## $($TimeStamp.ToString('yyyy-MM-dd HH:mm:ss')) #################"
 
 # Current Time as UTC
 $CurrentTimeUTC = (Get-Date).ToUniversalTime()
-$CurrentTimeUTCDateOnly=$CurrentTimeUTC | Get-Date -Format yyy-MM-dd | Get-Date
+$CurrentTimeUTCDateOnly=$CurrentTimeUTC.ToString('yyyy-MM-dd') | Get-Date
 
 # Get Info
 
-# we have to force the array, with only one entry it does not array it
-$ShadowStorage = @(Get-CimInstance Win32_ShadowStorage)
+$ShadowStorage = Get-CimInstance Win32_ShadowStorage
 $VolumesWithoutShadows =  (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object Name
 $Volumes = (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -contains $_.DeviceID}) | Sort-Object Name
 $ShadowCopyFullList = Get-CimInstance Win32_ShadowCopy
 if ([Environment]::UserInteractive) {
-    foreach ($Volume in $VolumesWithoutShadows.Where({$_.DriveLetter -ne $null})) {
-        Write-Verbose-and-Log "Volume $($Volume.DriveLetter) has no active shadowcopy - activate? (yes/ja / no/nein, 10 seconds timeout)"
+    foreach ($Volume in $VolumesWithoutShadows.Where({$_.Name -ilike "?:*"})) {
+        Write-Verbose-and-Log "Volume $($Volume.Name) has no active shadowcopy - activate? (yes/ja / no/nein, 10 seconds timeout)"
         $count = [int]0
         # clear buffer
         $host.UI.RawUI.FlushInputBuffer()
@@ -175,7 +166,7 @@ if ([Environment]::UserInteractive) {
 foreach ($Volume in $Volumes) {
     $MaximumShadowCopiesVolume=$MaximumShadowCopies
     Write-Verbose-and-Log "################ $($Volume.Name) ################"
-    if ($Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $false, no schadowcopies for ' + "$($Volume.Name) will be deleted") }
+    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.Name) will be deleted") }
     # Clean up old schadowcopies
     # We add a "only Day exact, no time" field as System.DateTime datafield, force sort by date newest at the end (should be anyway, but I don't trust it)
     $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) |
@@ -221,7 +212,7 @@ foreach ($Volume in $Volumes) {
             }
         }
     }
-    if ($Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $false, no schadowcopies for ' + "$($Volume.Name) have been deleted") }
+    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.Name) have been deleted") }
 
     # Create a new schadowcopy
     if ($CreateShadowCopy) {
@@ -230,11 +221,6 @@ foreach ($Volume in $Volumes) {
     } else {
         Write-Verbose-and-Log ('-CreateSchadowCopy is not set to $true, no new shadowcopy for ' + "$($Volume.Name) has been created")
     }
-}
-
-# Clean logfiles
-if ($LogPath.Length -gt 1) {
-    (Get-ChildItem $LogPath.TrimEnd("\")).Where({$_.Name -ilike "$($ScriptName.TrimEnd('.ps1'))_????-??-??.log" -and $_.LastWriteTime.AddDays($LogDays) -lt $TimeStamp}) | Remove-Item -Force
 }
 
 if ([Environment]::UserInteractive) {
