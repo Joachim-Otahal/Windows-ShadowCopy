@@ -213,7 +213,7 @@ foreach ($Volume in $Volumes) {
             }
         }
     }
-    if ($Cleanup) { Write-Verbose-and-Log ('-Cleanup is not set to $true, no schadowcopies for ' + "$($Volume.Name) have been deleted") }
+    if (!$Cleanup) { Write-Verbose-and-Log ('-Cleanup is not set to $true, no schadowcopies for ' + "$($Volume.Name) have been deleted") }
 
     # Create a new schadowcopy
     if ($CreateShadowCopy) {
