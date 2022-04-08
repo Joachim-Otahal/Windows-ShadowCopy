@@ -16,6 +16,9 @@ Run with right-click -> "Run with PowerShell". It will ask for evelation when no
 
 This script is for a job to create shadowcopies. It has two major modes of operation: Interactive, aka manually via right-click -> "Run with PowerShell", and from the task sheduler.
 
+### Note:
+You will have to delete the autocreated task if you update from a version before 8th April of 2022 due to -Confirm was replaced with -Cleanup
+
 ### Usage:
 When run manually via  -> "Run with PowerShell" it will do following actions:
 * It will ask for evelation when needed.
