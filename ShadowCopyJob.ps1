@@ -28,7 +28,7 @@
     Only keep these number of ShadowCopies. Default: Keep all. The value in the registry overrides this setting.
 .PARAMETER LogPath
     The PATH, not file, where to store the log. Each day a new log is created.
-.PARAMETER Confirm
+.PARAMETER Cleanup
     If not set to $true it will only show which shaodowcopies would be deleted. Default is $false.
 .PARAMETER CreateShadowCopy
     If not set to $true it will not create a ShadowCopy. Default is $false.
@@ -49,13 +49,14 @@
 
 # Versionlog:
 # 1.0 Joachim Otahal 19th to 23rd March 2022
+# 1.1 replace -Confirm with -Cleanup to be clearer
 
 param (
     [int]$KeepDaily = 2,
     [int]$KeepEvenDay = 8,
     [int]$KeepEveryFourthDay = 16,
     [int]$MaximumShadowCopies = 65535,
-    [bool]$Confirm = $false,
+    [bool]$Cleanup = $false,
     [bool]$CreateShadowCopy = $false,
     [string]$LogPath
 )
@@ -105,8 +106,8 @@ try {
     $null = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
 } catch {
     Write-Verbose-and-Log "Sheduled Task not found, creating one with five times per day - but deactivated."
-    $TaskDescription = "ShadowCopyJob - Task created by script on $TimeStamp `nGreetings from Joachim Otahal, Germany."
-    $TaskArgument = '-Command "& '+ "'" + $MyInvocation.MyCommand.Path + "'" + ' -Confirm:$true -CreateShadowCopy:$true -MaximumShadowCopies 40 -LogPath ' + "'" + $MyInvocation.MyCommand.Path.TrimEnd($MyInvocation.MyCommand.Name) + "'" + '"'
+    $TaskDescription = "ShadowCopyJob - Task created by script on $($TimeStamp.ToString('yyy-MM-dd HH:mm:ss')). `nGreetings from Joachim Otahal, Germany."
+    $TaskArgument = '-Command "& '+ "'" + $MyInvocation.MyCommand.Path + "'" + ' -Cleanup:$true -CreateShadowCopy:$true -MaximumShadowCopies 40 -LogPath ' + "'" + $MyInvocation.MyCommand.Path.TrimEnd($MyInvocation.MyCommand.Name) + "'" + '"'
     $TaskAction = New-ScheduledTaskAction -Execute '%windir%\System32\WindowsPowerShell\v1.0\Powershell.exe' -Argument $TaskArgument
     #$TaskTrigger =  New-ScheduledTaskTrigger -Once -At "2000-01-01 00:05" -RepetitionInterval "06:00" -RandomDelay "00:05"
     $TaskTrigger =  @(
@@ -166,7 +167,7 @@ if ([Environment]::UserInteractive) {
 foreach ($Volume in $Volumes) {
     $MaximumShadowCopiesVolume=$MaximumShadowCopies
     Write-Verbose-and-Log "################ $($Volume.Name) ################"
-    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.Name) will be deleted") }
+    if (!$Cleanup) { Write-Verbose-and-Log ('-Cleanup is not set to $true, no schadowcopies for ' + "$($Volume.Name) will be deleted") }
     # Clean up old schadowcopies
     # We add a "only Day exact, no time" field as System.DateTime datafield, force sort by date newest at the end (should be anyway, but I don't trust it)
     $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) |
@@ -184,7 +185,7 @@ foreach ($Volume in $Volumes) {
                 for ($i = 0 ; $i+1 -lt $ShadowCopyPerDay.Count; $i++) {
                     Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[$i].InstallDateUTC) Delete: More than $KeepDaily days old and we have $($ShadowCopyPerDay.Count) shadowcopies of that day."
                     $MaximumShadowCopiesVolume--
-                    if ($Confirm) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[$i].ID)})[0] -Verbose}
+                    if ($Cleanup) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[$i].ID)})[0] -Verbose}
                 }
                 # Nuke of that day when "day of month" uneven and and older than $KeepEveryDay
                 # Nuke of that day when "day of month" is not every fourth and and older than $KeepEveryFourthDay
@@ -193,7 +194,7 @@ foreach ($Volume in $Volumes) {
                     Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[-1].InstallDateUTC) Delete: More than $(-$AddDays+1) days old and uneven or not every fourth"
                     $MaximumShadowCopiesVolume--
                     $KeepNotify = $false
-                    if ($Confirm) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[-1].ID)})[0] -Verbose}
+                    if ($Cleanup) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[-1].ID)})[0] -Verbose}
                 }
                 if ($KeepNotify) { Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[-1].InstallDateUTC) Keeping!" }
             } else {
@@ -206,13 +207,13 @@ foreach ($Volume in $Volumes) {
         $ShadowCopyFullList = Get-CimInstance Win32_ShadowCopy
         $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) | Sort-Object InstallDate
         Write-Verbose-and-Log "$($Volume.Name) Delete: Shadowcopies $($ShadowCopyList[0..($ShadowCopyList.Count - $MaximumShadowCopies - 1)].InstallDate) exceeding the maximum number of $MaximumShadowCopies."
-        if ($Confirm) {
+        if ($Cleanup) {
             for ($i = 0 ; $i -lt $MaximumShadowCopies - 1; $i++) {
                 Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $ShadowCopyList[$i].ID})[0] -Verbose
             }
         }
     }
-    if (!$Confirm) { Write-Verbose-and-Log ('-Confirm is not set to $true, no schadowcopies for ' + "$($Volume.Name) have been deleted") }
+    if ($Cleanup) { Write-Verbose-and-Log ('-Cleanup is not set to $true, no schadowcopies for ' + "$($Volume.Name) have been deleted") }
 
     # Create a new schadowcopy
     if ($CreateShadowCopy) {
