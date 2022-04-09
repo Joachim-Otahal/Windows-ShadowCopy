@@ -117,6 +117,10 @@ try {
         $(New-ScheduledTaskTrigger -Daily -At "16:05" -RandomDelay "00:03")
         $(New-ScheduledTaskTrigger -Daily -At "20:05" -RandomDelay "00:03")
     )
+    # Killing the "Synchronize Across Time Zones", it should use local time. Stupid default of New-ScheduledTaskTrigger.
+    for ($i = 0 ; $i -lt $TaskTrigger.Count ; $i++) {
+        $TaskTrigger[$i].StartBoundary = [DateTime]::Parse($TaskTrigger[$i].StartBoundary).ToLocalTime().ToString("s")
+    }
     $TaskPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
     #$TaskSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
     Register-ScheduledTask -Action $TaskAction -Trigger $TaskTrigger -TaskName $TaskName -Principal $TaskPrincipal -Description $TaskDescription
@@ -183,7 +187,7 @@ foreach ($Volume in $Volumes) {
                 $KeepNotify = $true
                 # Nuke all daily except the last of the day
                 for ($i = 0 ; $i+1 -lt $ShadowCopyPerDay.Count; $i++) {
-                    Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[$i].InstallDateUTC) Delete: More than $KeepDaily days old and we have $($ShadowCopyPerDay.Count) shadowcopies of that day."
+                    Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[$i].InstallDate.ToString("yyyy-MM-dd HH:mm:ss")) Delete: More than $KeepDaily days old and we have $($ShadowCopyPerDay.Count) shadowcopies of that day."
                     $MaximumShadowCopiesVolume--
                     if ($Cleanup) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[$i].ID)})[0] -Verbose}
                 }
@@ -191,12 +195,12 @@ foreach ($Volume in $Volumes) {
                 # Nuke of that day when "day of month" is not every fourth and and older than $KeepEveryFourthDay
                 if ( ( $AddDays -le -$KeepEvenDay -and [int]($ShadowCopyPerDay[-1].InstallDateUTC.Day / 2) * 2 -ne [int]$ShadowCopyPerDay[-1].InstallDateUTC.Day ) -or
                      ( $AddDays -le -$KeepEveryFourthDay -and [int]($ShadowCopyPerDay[-1].InstallDateUTC.Day / 4) * 4 -ne [int]$ShadowCopyPerDay[-1].InstallDateUTC.Day ) )  {
-                    Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[-1].InstallDateUTC) Delete: More than $(-$AddDays+1) days old and uneven or not every fourth"
+                    Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[-1].InstallDate.ToString("yyyy-MM-dd HH:mm:ss")) Delete: More than $(-$AddDays+1) days old and uneven or not every fourth"
                     $MaximumShadowCopiesVolume--
                     $KeepNotify = $false
                     if ($Cleanup) { Remove-CimInstance -InputObject $ShadowCopyFullList.Where({$_.ID -eq $($ShadowCopyPerDay[-1].ID)})[0] -Verbose}
                 }
-                if ($KeepNotify) { Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[-1].InstallDateUTC) Keeping!" }
+                if ($KeepNotify) { Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[-1].InstallDate.ToString("yyyy-MM-dd HH:mm:ss")) Keeping!" }
             } else {
                 Write-Verbose-and-Log "$($Volume.Name) $($CurrentTimeUTCDateOnly.AddDays($AddDays)) No shadowcopies found"
             }
@@ -219,6 +223,7 @@ foreach ($Volume in $Volumes) {
     if ($CreateShadowCopy) {
         Write-Verbose-and-Log "$($Volume.Name) Create new shadowcopy"
         Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume="$($Volume.Name)"} -Verbose
+        Start-Sleep -Seconds 30
     } else {
         Write-Verbose-and-Log ('-CreateSchadowCopy is not set to $true, no new shadowcopy for ' + "$($Volume.Name) has been created")
     }
