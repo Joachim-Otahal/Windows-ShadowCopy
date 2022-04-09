@@ -202,7 +202,7 @@ foreach ($Volume in $Volumes) {
                 }
                 if ($KeepNotify) { Write-Verbose-and-Log "$($Volume.Name) $($ShadowCopyPerDay[-1].InstallDate.ToString("yyyy-MM-dd HH:mm:ss")) Keeping!" }
             } else {
-                Write-Verbose-and-Log "$($Volume.Name) $($CurrentTimeUTCDateOnly.AddDays($AddDays)) No shadowcopies found"
+                Write-Verbose-and-Log "$($Volume.Name) $($CurrentTimeUTCDateOnly.AddDays($AddDays).ToString("yyyy-MM-dd")) No shadowcopies found"
             }
         }
     }
