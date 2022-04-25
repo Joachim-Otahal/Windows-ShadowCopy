@@ -9,7 +9,7 @@
 
     For the shadowcopy tasks use "ShadowCopyJob.ps1" from https://github.com/Joachim-Otahal/Windows-ShadowCopy .
     This tool will work fine on a server too.
-    
+
 .NOTES
     Author: Joachim Otahal / jou@gmx.net / Joachim.Otahal@gmx.net
 .LINK
@@ -23,6 +23,7 @@
 #                Solving the problem to be unable to access the \\localhost\<drive>$\@GMT Path using:
 #                https://gist.github.com/jborean93/f60da33b08f8e1d5e0ef545b0a4698a0
 #                These Parts (c) 2019, Jordan Borean (@jborean93) <jborean93@gmail.com>
+# 0.4 April 2022 Adding Registry setting for MaxShadowCopies
 
 #### Typedefinition to NtFsControlFile/CreateFileW
 
@@ -91,6 +92,7 @@ namespace Win32
 
 $TimeStamp = Get-Date
 $ScriptName = $MyInvocation.MyCommand.Name
+$RegistryPath = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\VSS\Settings"
 
 #################### PSVerisonCheck
 
@@ -115,6 +117,8 @@ if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
 Write-Verbose "Gathering information..." -Verbose
 
 do {
+    # Get maximumshadowcopies from registry
+    $MaxShadowCopies = (Get-ItemProperty -Path $RegistryPath).MaxShadowCopies
     # we have to force the array, with only one entry it does not array it
     $ShadowStorage = @(Get-CimInstance Win32_ShadowStorage)
     #$VolumesWithoutShadows =  (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object DriveLetter
@@ -125,7 +129,7 @@ do {
     $Volumes += [pscustomobject]@{Name=6;Label=5;DeviceID=0;Capacity=0;FreeSpace=0;Active=6;Shadows=7;AllocatedSpace=9;MaxSpace=10;UsedSpace=0;Volume=0;DiffVolume=10}
     #$Volumes += (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $_.Name -inotlike "?:*"})
     $ShadowCopyFullList = @(Get-CimInstance Win32_ShadowCopy)
-    
+
     # Fill in which volume has which settings
 
     for ( $i=0 ; $i -lt $Volumes.Count -2; $i++) {
@@ -142,10 +146,10 @@ do {
             $Volumes[$i].Active         = "No"
         }
     }
-    
+
     # Can be done more elegant, but not today :D
     # calculate cell width
-    
+
     for ( $i=0 ; $i -lt $Volumes.Count -2; $i++) {
         $length = $Volumes[$i].Name.length
         if ($length -gt $Volumes[-1].Name          ) { $Volumes[-1].Name           = $length }
@@ -163,16 +167,16 @@ do {
             $length = "$([UInt64]($Volumes[$i].MaxSpace / 1073741824)) GB".length
             if ($length -gt $Volumes[-1].MaxSpace  ) { $Volumes[-1].MaxSpace       = $length }
         }
-    
+
         if ($Volumes[$i].Active -eq "Yes") {
             if ( $Volumes[$i].DiffVolume.DeviceID -ne $Volumes[$i].DeviceID ) {
                 $Volumes[-1].DiffVolume = 49
             }
         }
     }
-    
+
     #Show the list...
-    
+
     $outputstring = "#"*($Volumes[-1].Name +3) +
                     "#"*($Volumes[-1].Label +3) +
                     "#"*($Volumes[-1].Active +3) +
@@ -190,32 +194,32 @@ do {
                     "# DiffVolume" + " "*($Volumes[-1].DiffVolume -9) + "#"
     Write-Host $outputstring
     for ( $i=0 ; $i -lt $Volumes.Count -2; $i++) {
-        $outputstring = "# $($Volumes[$i].Name)"
-        $outputstring = $outputstring + " "*($Volumes[-1].Name - $outputstring.Length+3)
-        Write-Host $outputstring -NoNewline
-    
-        $outputstring = "# $($Volumes[$i].Label)"
-        $outputstring = $outputstring + " "*($Volumes[-1].Label - $outputstring.Length+3)
-        Write-Host $outputstring -NoNewline
-    
-        $outputstring = "# $($Volumes[$i].Active)"
-        $outputstring = $outputstring + " "*($Volumes[-1].Active - $outputstring.Length+3)
-        Write-Host $outputstring -NoNewline
-    
-        $outputstring = "# $($Volumes[$i].Shadows)"
-        $outputstring = $outputstring + " "*($Volumes[-1].Shadows - $outputstring.Length+3)
+        $outputstring  = "# $($Volumes[$i].Name)"
+        $outputstring += " "*($Volumes[-1].Name - $outputstring.Length+3)
         Write-Host $outputstring -NoNewline
 
-        $outputstring = "# $([UInt64]($Volumes[$i].AllocatedSpace / 1073741824)) GB"
-        $outputstring = $outputstring + " "*($Volumes[-1].AllocatedSpace - $outputstring.Length+3)
+        $outputstring  = "# $($Volumes[$i].Label)"
+        $outputstring += " "*($Volumes[-1].Label - $outputstring.Length+3)
         Write-Host $outputstring -NoNewline
-    
+
+        $outputstring  = "# $($Volumes[$i].Active)"
+        $outputstring += " "*($Volumes[-1].Active - $outputstring.Length+3)
+        Write-Host $outputstring -NoNewline
+
+        $outputstring  = "# $($Volumes[$i].Shadows)"
+        $outputstring += " "*($Volumes[-1].Shadows - $outputstring.Length+3)
+        Write-Host $outputstring -NoNewline
+
+        $outputstring  = "# $([UInt64]($Volumes[$i].AllocatedSpace / 1073741824)) GB"
+        $outputstring += " "*($Volumes[-1].AllocatedSpace - $outputstring.Length+3)
+        Write-Host $outputstring -NoNewline
+
         if ($Volumes[$i].MaxSpace -eq 18446744073709551615 -or $Volumes[$i].MaxSpace -eq 9223372036854775807) {
             $outputstring = "# No Limit" + " "*($Volumes[-1].MaxSpace - 7)
             Write-Host $outputstring -NoNewline
         } else {
-            $outputstring = "# $([UInt64]($Volumes[$i].MaxSpace / 1073741824)) GB"
-            $outputstring = $outputstring + " "*($Volumes[-1].MaxSpace - $outputstring.Length+3)
+            $outputstring  = "# $([UInt64]($Volumes[$i].MaxSpace / 1073741824)) GB"
+            $outputstring += " "*($Volumes[-1].MaxSpace - $outputstring.Length+3)
             Write-Host $outputstring -NoNewline
         }
     
@@ -224,8 +228,8 @@ do {
                 $outputstring = "# Same" + " "*($Volumes[-1].DiffVolume - 3) + "#"
                 Write-Host $outputstring
             } else {
-                $outputstring = "# $($Volumes[$i].DiffVolume.DeviceID)"
-                $outputstring = $outputstring + " "*($Volumes[-1].DiffVolume - $outputstring.Length+3) + "#"
+                $outputstring  = "# $($Volumes[$i].DiffVolume.DeviceID)"
+                $outputstring += " "*($Volumes[-1].DiffVolume - $outputstring.Length+3) + "#"
                 Write-Host $outputstring
             }
         } else {
@@ -241,9 +245,15 @@ do {
                     "#"*($Volumes[-1].MaxSpace +3) +
                     "#"*($Volumes[-1].DiffVolume +4)
     Write-Host $outputstring
-    
-    $VolumeToChange = ((Read-Host 'Change which volume (Driveletter or Mountpoint, enter "exit" to quit)') -replace '[^a-zA-Z:\\]','').ToUpper()
-    if ($VolumeToChange -ne "EXIT" -and $VolumeToChange -ne "QUIT") {
+    if ($MaxShadowCopies -eq $null) {
+        Write-Host "# Registry value for MaxShadowCopies not set. Default is 16 for clients OS, 64 for server OS."
+    } else {
+        Write-Host "# Registry value for MaxShadowCopies is $MaxShadowCopies."
+    }
+
+    Write-Host "Choose Volume by Driveletter or Mountpint.`nMAX to change registry for maximum number of shadow copies per volume."
+    $VolumeToChange = ((Read-Host 'EXIT to quit.') -replace '[^a-zA-Z:\\]','').ToUpper()
+    if ($VolumeToChange -notlike "EXI*" -and $VolumeToChange -notlike "QUI*"-and $VolumeToChange -notlike "MAX*") {
         $VolumeToChange = $Volumes.Where({$_.Name -ilike "$VolumeToChange*" -and $_.DeviceID -ne ""})[0].Name
         if ($VolumeToChange -eq $null) {
             Write-Host -BackgroundColor DarkRed " That Volume does not exist "
@@ -339,45 +349,46 @@ do {
                     $ShadowCopyList[$i].DirectPath = $ShadowCopyBasePath + '\' + $SingleGMTString
                     Write-Host "$i $($ShadowCopyList[$i].InstallDate.ToString("yyyy-MM-dd HH:mm:ss")), Direct Path: $($ShadowCopyList[$i].DirectPath)"
                 }
+
+                # Make the ShadowCopy actually accesible (Credits to Jordan Borean (@jborean93) <jborean93@gmail.com>)
+                $Handle = [Win32.NativeMethods]::CreateFileW(
+                    $ShadowCopyBasePath,
+                    [System.Security.AccessControl.FileSystemRights]"ListDirectory, ReadAttributes, Synchronize",
+                    [System.IO.FileShare]::ReadWrite,
+                    [System.IntPtr]::Zero,
+                    [System.IO.FileMode]::Open,
+                    0x02000000,  # FILE_FLAG_BACKUP_SEMANTICS
+                    [System.IntPtr]::Zero
+                )
+                if ($Handle.IsInvalid) {
+                    $LastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                    $Msg = Get-LastWin32ExceptionMessage -ErrorCode $LastError
+                    Write-Error -Message "CreateFileW($ShadowCopyBasePath) failed - $Msg"
+                }
+                # Set the initial buffer size to the size of NT_Trans_Data + 2 chars. We do this so we can get the actual buffer
+                # size that is contained in the NT_Trans_Data struct. A char is 2 bytes (UTF-16) and we expect 2 of them
+                $TransDataSize = [System.Runtime.InteropServices.Marshal]::SizeOf([Type][Win32.NativeHelpers+NT_Trans_Data])
+                $BufferSize = $TransDataSize + 4
+                $OutBuffer = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($BufferSize)
+                $IOBlock = New-Object -TypeName Win32.NativeHelpers+IO_STATUS_BLOCK
+                # Actually triggering, after that the access works.
+                $Result = [Win32.NativeMethods]::NtFsControlFile($Handle, [System.IntPtr]::Zero, [System.IntPtr]::Zero,
+                    [System.IntPtr]::Zero, [Ref]$IOBlock, 0x00144064, [System.IntPtr]::Zero, 0, $OutBuffer, $BufferSize)
+                if ($Result -ne 0) {
+                    # If the result was not 0 we need to convert the NTSTATUS code to a Win32 code
+                    $Win32Error = [Win32.NativeMethods]::RtlNtStatusToDosError($Result)
+                    $Msg = Get-LastWin32ExceptionMessage -ErrorCode $Win32Error
+                    Write-Error -Message "NtFsControlFile failed - $Msg"
+                }
+                # Cleanup handles
+                [System.Runtime.InteropServices.Marshal]::FreeHGlobal($OutBuffer)
+                $Handle.Dispose()
+
                 $inputhost2 = (Read-Host "Choose which shadowcopy to open. Enter nothing to return") -replace '[^0-9]',''
                 if ($inputhost2 -ne "") {
                     $inputhost2 = [int]$inputhost2
                     if ($inputhost2 -ge 0 -and $inputhost2 -lt $ShadowCopyList.Count) {
 
-                        # Make the ShadowCopy actually accesible (Credits to Jordan Borean (@jborean93) <jborean93@gmail.com>)
-                        $Handle = [Win32.NativeMethods]::CreateFileW(
-                            $ShadowCopyBasePath,
-                            [System.Security.AccessControl.FileSystemRights]"ListDirectory, ReadAttributes, Synchronize",
-                            [System.IO.FileShare]::ReadWrite,
-                            [System.IntPtr]::Zero,
-                            [System.IO.FileMode]::Open,
-                            0x02000000,  # FILE_FLAG_BACKUP_SEMANTICS
-                            [System.IntPtr]::Zero
-                        )
-                        if ($Handle.IsInvalid) {
-                            $LastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-                            $Msg = Get-LastWin32ExceptionMessage -ErrorCode $LastError
-                            Write-Error -Message "CreateFileW($ShadowCopyBasePath) failed - $Msg"
-                        }
-                        # Set the initial buffer size to the size of NT_Trans_Data + 2 chars. We do this so we can get the actual buffer
-                        # size that is contained in the NT_Trans_Data struct. A char is 2 bytes (UTF-16) and we expect 2 of them
-                        $TransDataSize = [System.Runtime.InteropServices.Marshal]::SizeOf([Type][Win32.NativeHelpers+NT_Trans_Data])
-                        $BufferSize = $TransDataSize + 4
-                        $OutBuffer = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($BufferSize)
-                        $IOBlock = New-Object -TypeName Win32.NativeHelpers+IO_STATUS_BLOCK
-                        # Actually triggering, after that the access works.
-                        $Result = [Win32.NativeMethods]::NtFsControlFile($Handle, [System.IntPtr]::Zero, [System.IntPtr]::Zero,
-                            [System.IntPtr]::Zero, [Ref]$IOBlock, 0x00144064, [System.IntPtr]::Zero, 0, $OutBuffer, $BufferSize)
-                        if ($Result -ne 0) {
-                            # If the result was not 0 we need to convert the NTSTATUS code to a Win32 code
-                            $Win32Error = [Win32.NativeMethods]::RtlNtStatusToDosError($Result)
-                            $Msg = Get-LastWin32ExceptionMessage -ErrorCode $Win32Error
-                            Write-Error -Message "NtFsControlFile failed - $Msg"
-                            return
-                        }
-                        # Cleanup handles
-                        [System.Runtime.InteropServices.Marshal]::FreeHGlobal($OutBuffer)
-                        $Handle.Dispose()
 
                         Write-Host -BackgroundColor DarkGreen "Contents of $($ShadowCopyList[$inputhost2].DirectPath) at $($ShadowCopyList[$inputhost2].InstallDate | get-date -format "yyyy-MM-dd HH:mm:ss")"
                         Get-ChildItem -Path "$($ShadowCopyList[$inputhost2].DirectPath)"
@@ -386,6 +397,22 @@ do {
                         Write-Host -BackgroundColor DarkGreen "Path $($ShadowCopyList[$inputhost2].DirectPath) has been copied to clipboard, ready to paste in Explorer/CMD/Powershell"
                     }
                 }
+            }
+        }
+    }
+    if ($VolumeToChange -like "MAX*") {
+        If ($MaxShadowCopies -eq $null) {
+            Write-Host "Value is not set. Default is 16 for client OS, 64 for server OS."
+        } 
+        $inputhost = [int]((Read-Host "Set new MaxShadowCopies value from 1 to 512. 0 to clear the value from the registy.") -replace '[^0-9]','')
+        if ($inputhost -eq 0) {
+            Remove-ItemProperty -Path $RegistryPath -Name MaxShadowCopies -Verbose -ErrorAction Ignore
+        }
+        if ($inputhost -gt 0 -and $inputhost -le 512) {
+            if ($MaxShadowCopies -eq $null) {
+                New-ItemProperty -Path $RegistryPath -Name "MaxShadowCopies" -PropertyType DWord -Value $inputhost
+            } else {
+                Set-ItemProperty -Path $RegistryPath -Name "MaxShadowCopies" -Value $inputhost -Verbose
             }
         }
     }
