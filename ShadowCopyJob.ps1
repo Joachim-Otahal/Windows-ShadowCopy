@@ -50,6 +50,7 @@
 # Versionlog:
 # 1.0 Joachim Otahal 19th to 23rd March 2022
 # 1.1 replace -Confirm with -Cleanup to be clearer
+# 1.2 Default job is created with full command line, not relying in defaults in this script
 
 param (
     [int]$KeepDaily = 2,
@@ -107,7 +108,7 @@ try {
 } catch {
     Write-Verbose-and-Log "Sheduled Task not found, creating one with five times per day - but deactivated."
     $TaskDescription = "ShadowCopyJob - Task created by script on $($TimeStamp.ToString('yyy-MM-dd HH:mm:ss')). `nGreetings from Joachim Otahal, Germany."
-    $TaskArgument = '-Command "& '+ "'" + $MyInvocation.MyCommand.Path + "'" + ' -Cleanup:$true -CreateShadowCopy:$true -MaximumShadowCopies 40 -LogPath ' + "'" + $MyInvocation.MyCommand.Path.TrimEnd($MyInvocation.MyCommand.Name) + "'" + '"'
+    $TaskArgument = '-Command "& '+ "'" + $MyInvocation.MyCommand.Path + "'" + ' -KeepDaily 2 -KeepEvenDay 8 -KeepEveryFourthDay 16 -MaximumShadowCopies 40 -Cleanup:$true -CreateShadowCopy:$true -LogPath ' + "'" + $MyInvocation.MyCommand.Path.TrimEnd($MyInvocation.MyCommand.Name) + "'" + '"'
     $TaskAction = New-ScheduledTaskAction -Execute '%windir%\System32\WindowsPowerShell\v1.0\Powershell.exe' -Argument $TaskArgument
     #$TaskTrigger =  New-ScheduledTaskTrigger -Once -At "2000-01-01 00:05" -RepetitionInterval "06:00" -RandomDelay "00:05"
     $TaskTrigger =  @(
@@ -177,7 +178,7 @@ foreach ($Volume in $Volumes) {
     $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) |
         Select-Object *,@{Name="InstallDateUTC";Expression={$_.InstallDate.ToUniversalTime()}},@{Name="InstallDateUTCDateOnly";Expression={$_.InstallDate.ToUniversalTime() | 
         Get-Date -Format yyyy-MM-dd | Get-Date}} | Sort-Object InstallDate
-    
+
     if ($ShadowCopyList.Count -gt 0) {
         # After $KeepDaily days: Keep only last schadowcopy of the day, after eight days keep only even days
         for ($AddDays = -$KeepDaily; $CurrentTimeUTCDateOnly.AddDays($AddDays+1) -gt $ShadowCopyList[0].InstallDateUTCDateOnly ; $AddDays--) {
