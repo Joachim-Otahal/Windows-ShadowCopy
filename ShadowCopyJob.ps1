@@ -51,6 +51,7 @@
 # 1.0 Joachim Otahal 19th to 23rd March 2022
 # 1.1 replace -Confirm with -Cleanup to be clearer
 # 1.2 Default job is created with full command line, not relying in defaults in this script
+# 1.3 Cleanup logs older than 30 days, assume scriptlocation as log location
 
 param (
     [int]$KeepDaily = 2,
@@ -66,6 +67,9 @@ param (
 
 $TimeStamp = Get-Date
 $ScriptName = $MyInvocation.MyCommand.Name
+if (!$LogPath) {
+    $LogPath = $MyInvocation.MyCommand.Path | Split-Path
+}
 
 #################### Functions
 
@@ -75,14 +79,14 @@ Function Write-Verbose-and-Log {
     )
     Write-Verbose $Message -Verbose
     if ($LogPath) {
-        $LogPathFinal=$LogPath.TrimEnd("\") + "\" + $ScriptName.TrimEnd(".ps1") + "_" + ($TimeStamp | Get-Date -Format "yyyy-MM-dd") + ".log"
+        $LogPathFinal=$LogPath.TrimEnd("\") + "\" + $ScriptName.TrimEnd(".ps1") + "_" + $TimeStamp.ToString("yyyy-MM-dd") + ".log"
         Out-File -LiteralPath $LogPathFinal -Append -InputObject $Message
     }
 }
 
 #################### PSVerisonCheck
 
-if ([float]([string]$PSVersionTable.PSVersion.Major+"."+[string]$PSVersionTable.PSVersion.Minor) -lt [float]"3.0") {
+if ($PSVersionTable.PSVersion.Major -lt 3) {
     Write-Verbose "Powershell must me at least verion 3.0 due to Get-CimInstance usage.`nDownload Version 5.1 (recommended!): https://www.microsoft.com/en-us/download/details.aspx?id=54616`nDownload Version 3: https://www.microsoft.com/en-us/download/details.aspx?id=34595" -Verbose
     Start-Sleep 20
     break
@@ -96,8 +100,6 @@ if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
     #Start-Sleep 20
     break
 }
-
-################### Log init with date-time in front.
 
 #################### If there is no sheduled task, create one.
 #################### But create it as "Deactivated", to be activated by an admin when needed.
@@ -229,6 +231,15 @@ foreach ($Volume in $Volumes) {
         Write-Verbose-and-Log ('-CreateSchadowCopy is not set to $true, no new shadowcopy for ' + "$($Volume.Name) has been created")
     }
 }
+
+# Cleanup logfiles older than 30 days
+
+if ($LogPath) {
+    $LogList = (Get-ChildItem -Path $($LogPath + "\" + $ScriptName.TrimEnd(".ps1") + "_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].log")).Where({$_.CreationTime -lt $TimeStamp.AddDays(-30)})
+    Write-Verbose-and-Log ("Clearing logs:`n$($LogList.FullName)")
+    Remove-Item $LogList -Force -Verbose
+}
+
 
 if ([Environment]::UserInteractive) {
     Write-Verbose "`nDone!`nWaiting 60 seconds before exit so you can save a screenshot (or press any key)." -Verbose
