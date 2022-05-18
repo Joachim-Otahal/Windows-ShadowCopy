@@ -52,6 +52,8 @@
 # 1.1 replace -Confirm with -Cleanup to be clearer
 # 1.2 Default job is created with full command line, not relying in defaults in this script
 # 1.3 Cleanup logs older than 30 days, assume scriptlocation as log location
+# 1.4 Use NTFS Compression on the logs. C# part: https://stackoverflow.com/questions/31032834/set-file-compression-attribute / https://stackoverflow.com/users/7021/sam
+#     Stupid bug at loglist cleanup, causing errormessage when there is nothing to clean up
 
 param (
     [int]$KeepDaily = 2,
@@ -62,6 +64,47 @@ param (
     [bool]$CreateShadowCopy = $false,
     [string]$LogPath
 )
+
+$MethodDefinition= @'
+public static class FileTools
+{
+  private const int FSCTL_SET_COMPRESSION = 0x9C040;
+  private const short COMPRESSION_FORMAT_DEFAULT = 1;
+  private const short COMPRESSION_FORMAT_DISABLE = 0;
+
+  [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+  private static extern int DeviceIoControl(
+      IntPtr hDevice,
+      int dwIoControlCode,
+      ref short lpInBuffer,
+      int nInBufferSize,
+      IntPtr lpOutBuffer,
+      int nOutBufferSize,
+      ref int lpBytesReturned,
+      IntPtr lpOverlapped);
+
+  public static bool Compact(IntPtr handle)
+  {
+    int lpBytesReturned = 0;
+    short lpInBuffer = COMPRESSION_FORMAT_DEFAULT;
+
+    return DeviceIoControl(handle, FSCTL_SET_COMPRESSION,
+        ref lpInBuffer, sizeof(short), IntPtr.Zero, 0,
+        ref lpBytesReturned, IntPtr.Zero) != 0;
+  }
+  public static bool Uncompact(IntPtr handle)
+  {
+    int lpBytesReturned = 0;
+    short lpInBuffer = COMPRESSION_FORMAT_DISABLE;
+
+    return DeviceIoControl(handle, FSCTL_SET_COMPRESSION,
+        ref lpInBuffer, sizeof(short), IntPtr.Zero, 0,
+        ref lpBytesReturned, IntPtr.Zero) != 0;
+  }
+}
+'@
+
+$Kernel32 = Add-Type -MemberDefinition $MethodDefinition -Name ‘Kernel32’ -Namespace ‘Win32’ -PassThru
 
 #################### Konstants
 
@@ -236,8 +279,17 @@ foreach ($Volume in $Volumes) {
 
 if ($LogPath) {
     $LogList = (Get-ChildItem -Path $($LogPath + "\" + $ScriptName.TrimEnd(".ps1") + "_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].log")).Where({$_.CreationTime -lt $TimeStamp.AddDays(-30)})
-    Write-Verbose-and-Log ("Clearing logs:`n$($LogList.FullName)")
-    Remove-Item $LogList -Force -Verbose
+    if ($LogList.Count -gt 0) {
+        Write-Verbose-and-Log ("Clearing logs:`n$($LogList.FullName)")
+        Remove-Item $LogList -Force -Verbose
+    }
+    # Compact all older than one day
+    $LogList = (Get-ChildItem -Path $($LogPath + "\" + $ScriptName.TrimEnd(".ps1") + "_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].log")).Where({$_.CreationTime -lt $TimeStamp.AddDays(-1) -and $_.Attributes -notmatch [System.IO.FileAttributes]::Compressed})
+    foreach ($Log in $LogList) {
+        $File = [System.IO.File]::Open($Log,'Open','ReadWrite','None')
+        $Method = [Win32.Kernel32+FileTools]::Compact($File.Handle)
+        $File.Close()
+    }
 }
 
 
