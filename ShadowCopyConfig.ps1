@@ -96,7 +96,7 @@ $RegistryPath = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\
 
 #################### PSVerisonCheck
 
-if ([float]([string]$PSVersionTable.PSVersion.Major+"."+[string]$PSVersionTable.PSVersion.Minor) -lt [float]"4.0") {
+if ($PSVersionTable.PSVersion.Major -lt 4) {
     Write-Verbose "Powershell must me at least verion 4.0 due to [pscustomobject] usage.`nDownload Version 5.1 (recommended!): https://www.microsoft.com/en-us/download/details.aspx?id=54616" -Verbose
     Start-Sleep 20
     break
@@ -251,7 +251,7 @@ do {
         Write-Host "# Registry value for MaxShadowCopies is $MaxShadowCopies."
     }
 
-    Write-Host "Choose Volume by Driveletter or Mountpint.`nMAX to change registry for maximum number of shadow copies per volume."
+    Write-Host "Choose Volume by Driveletter or Mountpoint.`nMAX to change registry for maximum number of shadow copies per volume."
     $VolumeToChange = ((Read-Host 'EXIT to quit.') -replace '[^a-zA-Z:\\]','').ToUpper()
     if ($VolumeToChange -notlike "EXI*" -and $VolumeToChange -notlike "QUI*"-and $VolumeToChange -notlike "MAX*") {
         $VolumeToChange = $Volumes.Where({$_.Name -ilike "$VolumeToChange*" -and $_.DeviceID -ne ""})[0].Name
