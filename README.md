@@ -8,7 +8,8 @@ This is the config tool, in the end replaces the former VSSUIRUN which is still 
 ### Usage
 
 Run with right-click -> "Run with PowerShell". It will ask for evelation when not yet ran with admin rights.
-* It will show a menu of all local drives which have a drive letter or a mountpoint. ![image](https://user-images.githubusercontent.com/10100281/169111818-6daaa882-6265-4edb-96b0-8abcdf6c4d3a.png)
+* It will show a menu of all local drives which have a drive letter or a mountpoint. ![image](https://user-images.githubusercontent.com/10100281/169112356-50998186-e03e-4d63-8cb7-457a82f86562.png)
+
 
 * You can activate, deactivate, set the maximum size to use for shadowcopies, change the maximum number of shadowcopies per volume handled by the OS and selectively delete or open a shadowcopy. When you choose to open a shadowcopy it will open the explorer at the right point and copy the direct path, for example "\\localhost\F$\@GMT-2022.03.26-07.05.16", to the clipboard which can be used directly in CMD, powershell, robocopy, FreeCommander and so on. ![image](https://user-images.githubusercontent.com/10100281/162098713-349d3373-a8eb-4af5-bd20-b3ad2ddc5e80.png)
 
