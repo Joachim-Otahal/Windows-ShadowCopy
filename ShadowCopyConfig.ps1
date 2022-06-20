@@ -20,10 +20,14 @@
 # 0.1 March 2022 Inital version Joachim Otahal
 # 0.2            A little cleanup, Menu adjustment for 80 character screen, browse shows ISO8601 like date, path copy to clipboard
 # 0.3 April 2022 Handle volumes mounted in a directory correct, show number of shadowcopies, better menu formatting.
-#                Solving the problem to be unable to access the \\localhost\<drive>$\@GMT Path using:
+#                Solving the problem to be unable to access the \\localhost\<drive>$\@GMT path first time after a reboot using:
 #                https://gist.github.com/jborean93/f60da33b08f8e1d5e0ef545b0a4698a0
 #                These Parts (c) 2019, Jordan Borean (@jborean93) <jborean93@gmail.com>
 # 0.4 April 2022 Adding Registry setting for MaxShadowCopies
+# 0.5 June  2022 Nice, Windows Insider Build 22621.105 introduced a bug where "Previous version" within Explorer does not work on
+#                a local system. Either NtFsControlFile or CreateFileW is broken, so the explorer doesn't show it, and this script
+#                throws errors where it should not. This exposed a bug where this script does not get the Win32 error. Handling
+#                that now correctly.
 
 #### Typedefinition to NtFsControlFile/CreateFileW
 
@@ -362,8 +366,9 @@ do {
                 )
                 if ($Handle.IsInvalid) {
                     $LastError = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-                    $Msg = Get-LastWin32ExceptionMessage -ErrorCode $LastError
-                    Write-Error -Message "CreateFileW($ShadowCopyBasePath) failed - $Msg"
+                    $Exception = New-Object -TypeName System.ComponentModel.Win32Exception -ArgumentList $LastError
+                    $ExceptionMessage = "{0} (Win32 ErrorCode {1} - 0x{1:X8})" -f $Exception.Message, $LastError
+                    Write-Error -Message "CreateFileW($ShadowCopyBasePath) failed - $ExceptionMessage"
                 }
                 # Set the initial buffer size to the size of NT_Trans_Data + 2 chars. We do this so we can get the actual buffer
                 # size that is contained in the NT_Trans_Data struct. A char is 2 bytes (UTF-16) and we expect 2 of them
@@ -377,8 +382,10 @@ do {
                 if ($Result -ne 0) {
                     # If the result was not 0 we need to convert the NTSTATUS code to a Win32 code
                     $Win32Error = [Win32.NativeMethods]::RtlNtStatusToDosError($Result)
-                    $Msg = Get-LastWin32ExceptionMessage -ErrorCode $Win32Error
-                    Write-Error -Message "NtFsControlFile failed - $Msg"
+                    $Exception = New-Object -TypeName System.ComponentModel.Win32Exception -ArgumentList $Win32Error
+                    $ExceptionMessage = "{0} (Win32 ErrorCode {1} - 0x{1:X8})" -f $Exception.Message, $Win32Error
+                    Write-Error -Message "NtFsControlFile failed - $ExceptionMessage"
+                    Write-Verbose 'Up to now Windows 11, insider build 22621.105, seems to have a bug accessing "Previos Versions" within the file explorer and this tool.' -Verbose
                 }
                 # Cleanup handles
                 [System.Runtime.InteropServices.Marshal]::FreeHGlobal($OutBuffer)
