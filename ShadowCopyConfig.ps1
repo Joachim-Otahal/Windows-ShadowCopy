@@ -385,7 +385,7 @@ do {
                     $Exception = New-Object -TypeName System.ComponentModel.Win32Exception -ArgumentList $Win32Error
                     $ExceptionMessage = "{0} (Win32 ErrorCode {1} - 0x{1:X8})" -f $Exception.Message, $Win32Error
                     Write-Error -Message "NtFsControlFile failed - $ExceptionMessage"
-                    Write-Verbose 'Up to now Windows 11, insider build 22621.105, seems to have a bug accessing "Previous Versions" within the file explorer and this tool.' -Verbose
+                    Write-Verbose 'Up to now Windows 11, insider builds 22621.*, seem to have a bug accessing "Previous Versions" within the file explorer and this tool.' -Verbose
                 }
                 # Cleanup handles
                 [System.Runtime.InteropServices.Marshal]::FreeHGlobal($OutBuffer)
