@@ -17,17 +17,19 @@
 #>
 
 # Versionlog:
-# 0.1 March 2022 Inital version Joachim Otahal
-# 0.2            A little cleanup, Menu adjustment for 80 character screen, browse shows ISO8601 like date, path copy to clipboard
-# 0.3 April 2022 Handle volumes mounted in a directory correct, show number of shadowcopies, better menu formatting.
-#                Solving the problem to be unable to access the \\localhost\<drive>$\@GMT path first time after a reboot using:
-#                https://gist.github.com/jborean93/f60da33b08f8e1d5e0ef545b0a4698a0
-#                These Parts (c) 2019, Jordan Borean (@jborean93) <jborean93@gmail.com>
-# 0.4 April 2022 Adding Registry setting for MaxShadowCopies
-# 0.5 June  2022 Nice, Windows Insider Build 22621.105 introduced a bug where "Previous version" within Explorer does not work on
-#                a local system. Either NtFsControlFile or CreateFileW is broken, so the explorer doesn't show it, and this script
-#                throws errors where it should not. This exposed a bug where this script does not get the Win32 error. Handling
-#                that now correctly.
+# 0.1 March  2022 Inital version Joachim Otahal
+# 0.2             A little cleanup, Menu adjustment for 80 character screen, browse shows ISO8601 like date, path copy to clipboard
+# 0.3 April  2022 Handle volumes mounted in a directory correct, show number of shadowcopies, better menu formatting.
+#                 Solving the problem to be unable to access the \\localhost\<drive>$\@GMT path first time after a reboot using:
+#                 https://gist.github.com/jborean93/f60da33b08f8e1d5e0ef545b0a4698a0
+#                 These Parts (c) 2019, Jordan Borean (@jborean93) <jborean93@gmail.com>
+# 0.4 April  2022 Adding Registry setting for MaxShadowCopies
+# 0.5 June   2022 Nice, Windows Insider Build 22621.105 introduced a bug where "Previous version" within Explorer does not work on
+#                 a local system. Either NtFsControlFile or CreateFileW is broken, so the explorer doesn't show it, and this script
+#                 throws errors where it should not. This exposed a bug where this script does not get the Win32 error. Handling
+#                 that now correctly.
+# 0.6 July   2022 Addressing the fact that Windows 10 and 11 ignore the registry value "MaxShadowCopy" and only offer a maximum of 16 or 8 Shadowcopies.
+# 0.7 Sept   2022 Beautfy the table output method.
 
 #### Typedefinition to NtFsControlFile/CreateFileW
 
@@ -92,7 +94,7 @@ namespace Win32
 }
 '@
 
-#### Konstants
+#### Constants
 
 $TimeStamp = Get-Date
 $ScriptName = $MyInvocation.MyCommand.Name
@@ -115,10 +117,44 @@ if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
     break
 }
 
+#### Functions
+
+Function Output-SimpleTable {
+    param (
+    [parameter(Mandatory)][Object]$TableArray
+    )
+    $headers = $TableArray[0].PSObject.Properties.Name 
+    $TableCount = $TableArray.Count
+    $TableArray += $TableArray[0] | Select-Object *
+    # Check maximum length
+    foreach ($header in $headers) {
+        $TableArray[-1].$header = $header.Length
+        for ($i = 0;$i -lt $TableCount; $i++) {
+            if ($TableArray[$i].$header.length -gt $TableArray[-1].$header) {
+                $TableArray[-1].$header = $TableArray[$i].$header.length
+            }
+        }
+    }
+    for ($i = -2;$i -lt $TableArray.Count; $i++) {
+        $outputstring = ""
+        foreach ($header in $headers) {
+            switch($i) {
+                {$_ -eq -2 -or $_ -eq $TableCount} { $outputstring = $outputstring + "#"*($TableArray[-1].$header+3) }
+                -1                                 { $outputstring = $outputstring + "# $header" + " "*($TableArray[-1].$header - $header.Length)+" " }
+                Default                            { $outputstring = $outputstring + "# $($TableArray[$i].$header)" + " "*($TableArray[-1].$header - $TableArray[$i].$header.Length)+" " }
+           }
+        }
+        $outputstring = $outputstring + "#"
+        Write-Host $outputstring
+    }
+}
+
 # Get Info
 # Yes, re-read everything every time since we allow changes
 
 Write-Verbose "Gathering information..." -Verbose
+
+$ComputerInfo = Get-WmiObject -class Win32_OperatingSystem | Select-Object *
 
 do {
     # Get maximumshadowcopies from registry
@@ -127,11 +163,6 @@ do {
     $ShadowStorage = @(Get-CimInstance Win32_ShadowStorage)
     #$VolumesWithoutShadows =  (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object DriveLetter
     $Volumes = @((Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $_.Name -ilike "?:*"}) | Select-Object Name,Label,DeviceID,Capacity,FreeSpace,Active,Shadows,AllocatedSpace,MaxSpace,UsedSpace,Volume,DiffVolume | Sort-Object Name)
-    # Tabletitles
-    $Volumes += [pscustomobject]@{Name="Volume";Label="Label";DeviceID="";Capacity="";FreeSpace="";Active="Active";Shadows="Shadows";AllocatedSpace="Allocated";MaxSpace="Maximum";UsedSpace="";Volume="";DiffVolume=""}
-    # Tablecellwidth
-    $Volumes += [pscustomobject]@{Name=6;Label=5;DeviceID=0;Capacity=0;FreeSpace=0;Active=6;Shadows=7;AllocatedSpace=9;MaxSpace=10;UsedSpace=0;Volume=0;DiffVolume=10}
-    #$Volumes += (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $_.Name -inotlike "?:*"})
     $ShadowCopyFullList = @(Get-CimInstance Win32_ShadowCopy)
 
     # Fill in which volume has which settings
@@ -151,108 +182,37 @@ do {
         }
     }
 
-    # Can be done more elegant, but not today :D
-    # calculate cell width
 
-    for ( $i=0 ; $i -lt $Volumes.Count -2; $i++) {
-        $length = $Volumes[$i].Name.length
-        if ($length -gt $Volumes[-1].Name          ) { $Volumes[-1].Name           = $length }
-    
-        $length = $Volumes[$i].Label.length
-        if ($length -gt $Volumes[-1].Label         ) { $Volumes[-1].Label          = $length }
-    
-        $length = $Volumes[$i].Active.length
-        if ($length -gt $Volumes[-1].Active        ) { $Volumes[-1].Active         = $length }
-    
-        $length = "$([UInt64]($Volumes[$i].AllocatedSpace / 1073741824)) GB".length
-        if ($length -gt $Volumes[-1].AllocatedSpace) { $Volumes[-1].AllocatedSpace = $length }
-    
-        if ($Volumes[$i].MaxSpace -ne 18446744073709551615 -and $Volumes[$i].MaxSpace -ne 9223372036854775807) {
-            $length = "$([UInt64]($Volumes[$i].MaxSpace / 1073741824)) GB".length
-            if ($length -gt $Volumes[-1].MaxSpace  ) { $Volumes[-1].MaxSpace       = $length }
-        }
-
-        if ($Volumes[$i].Active -eq "Yes") {
-            if ( $Volumes[$i].DiffVolume.DeviceID -ne $Volumes[$i].DeviceID ) {
-                $Volumes[-1].DiffVolume = 49
-            }
-        }
-    }
-
-    #Show the list...
-
-    $outputstring = "#"*($Volumes[-1].Name +3) +
-                    "#"*($Volumes[-1].Label +3) +
-                    "#"*($Volumes[-1].Active +3) +
-                    "#"*($Volumes[-1].Shadows +3) +
-                    "#"*($Volumes[-1].AllocatedSpace +3) +
-                    "#"*($Volumes[-1].MaxSpace +3) +
-                    "#"*($Volumes[-1].DiffVolume +4)
-    Write-Host $outputstring
-    $outputstring = "# Volume" + " "*($Volumes[-1].Name -5) +
-                    "# Label" + " "*($Volumes[-1].Label -4) +
-                    "# Active" + " "*($Volumes[-1].Active -5) +
-                    "# Shadows" + " "*($Volumes[-1].Shadows -6) +
-                    "# Allocated" + " "*($Volumes[-1].AllocatedSpace -8) +
-                    "# Maximum" + " "*($Volumes[-1].MaxSpace -6) +
-                    "# DiffVolume" + " "*($Volumes[-1].DiffVolume -9) + "#"
-    Write-Host $outputstring
-    for ( $i=0 ; $i -lt $Volumes.Count -2; $i++) {
-        $outputstring  = "# $($Volumes[$i].Name)"
-        $outputstring += " "*($Volumes[-1].Name - $outputstring.Length+3)
-        Write-Host $outputstring -NoNewline
-
-        $outputstring  = "# $($Volumes[$i].Label)"
-        $outputstring += " "*($Volumes[-1].Label - $outputstring.Length+3)
-        Write-Host $outputstring -NoNewline
-
-        $outputstring  = "# $($Volumes[$i].Active)"
-        $outputstring += " "*($Volumes[-1].Active - $outputstring.Length+3)
-        Write-Host $outputstring -NoNewline
-
-        $outputstring  = "# $($Volumes[$i].Shadows)"
-        $outputstring += " "*($Volumes[-1].Shadows - $outputstring.Length+3)
-        Write-Host $outputstring -NoNewline
-
-        $outputstring  = "# $([UInt64]($Volumes[$i].AllocatedSpace / 1073741824)) GB"
-        $outputstring += " "*($Volumes[-1].AllocatedSpace - $outputstring.Length+3)
-        Write-Host $outputstring -NoNewline
-
+    # Build Output-Table Array as strings
+    $TableArray = $Volumes | select Volume,Label,Active,Shadows,Allocated,Maximum,Diffvolume
+    # Change everything to string needed...
+    for ( $i=0 ; $i -lt $TableArray.Count; $i++) {
+        $TableArray[$i].Volume = $Volumes[$i].Name
+        if ($TableArray[$i].Shadows) {$TableArray[$i].Shadows = $TableArray[$i].Shadows.ToString()}
+        $TableArray[$i].Allocated = "$([UInt64]($Volumes[$i].AllocatedSpace / 1073741824)) GB"
         if ($Volumes[$i].MaxSpace -eq 18446744073709551615 -or $Volumes[$i].MaxSpace -eq 9223372036854775807) {
-            $outputstring = "# No Limit" + " "*($Volumes[-1].MaxSpace - 7)
-            Write-Host $outputstring -NoNewline
+            $TableArray[$i].Maximum = "No Limit"
         } else {
-            $outputstring  = "# $([UInt64]($Volumes[$i].MaxSpace / 1073741824)) GB"
-            $outputstring += " "*($Volumes[-1].MaxSpace - $outputstring.Length+3)
-            Write-Host $outputstring -NoNewline
+            $TableArray[$i].Maximum = "$([UInt64]($Volumes[$i].MaxSpace / 1073741824)) GB"
         }
-    
-        if ($Volumes[$i].Active -eq "Yes") {
+        if ($TableArray[$i].Active -eq "Yes") {
             if ( $Volumes[$i].DiffVolume.DeviceID -eq $Volumes[$i].DeviceID ) {
-                $outputstring = "# Same" + " "*($Volumes[-1].DiffVolume - 3) + "#"
-                Write-Host $outputstring
+                $TableArray[$i].DiffVolume = "Same"
             } else {
-                $outputstring  = "# $($Volumes[$i].DiffVolume.DeviceID)"
-                $outputstring += " "*($Volumes[-1].DiffVolume - $outputstring.Length+3) + "#"
-                Write-Host $outputstring
+                $TableArray[$i].DiffVolume  = "$($Volumes[$i].DiffVolume.DeviceID)"
             }
-        } else {
-            $outputstring = "#" + " "*($Volumes[-1].DiffVolume + 2) + "#"
-            Write-Host $outputstring
         }
     }
-    $outputstring = "#"*($Volumes[-1].Name +3) +
-                    "#"*($Volumes[-1].Label +3) +
-                    "#"*($Volumes[-1].Active +3) +
-                    "#"*($Volumes[-1].Shadows +3) +
-                    "#"*($Volumes[-1].AllocatedSpace +3) +
-                    "#"*($Volumes[-1].MaxSpace +3) +
-                    "#"*($Volumes[-1].DiffVolume +4)
-    Write-Host $outputstring
+
+    Output-SimpleTable $TableArray
+
     if ($MaxShadowCopies -eq $null) {
         Write-Host "# Registry value for MaxShadowCopies not set. Default is 16 for clients OS, 64 for server OS."
     } else {
         Write-Host "# Registry value for MaxShadowCopies is $MaxShadowCopies."
+        if ($ComputerInfo.Caption -notlike "*Server*") {
+            Write-Host -BackgroundColor DarkRed "This computer running $($ComputerInfo.Caption). You might be limited to seven days or fifteen days of shadowcopies."
+        }
     }
 
     Write-Host "Choose Volume by Driveletter or Mountpoint.`nMAX to change registry for maximum number of shadow copies per volume."
@@ -270,7 +230,7 @@ do {
             Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "m"
             Write-Host -NoNewline "aximum size, "
             Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "c"
-            Write-Host "reate," -NoNewline
+            Write-Host "reate, " -NoNewline
             Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "o"
             Write-Host "pen or " -NoNewline
             Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "r"
@@ -346,7 +306,7 @@ do {
                 }
             }
             if ($inputhost -eq "B" -or $inputhost -eq "O") {
-                $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID }) | Select-Object *,DirectPath
+                $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID }) | Select-Object *,DirectPath | Sort-Object InstallDate -Descending
                 $ShadowCopyBasePath = "\\localhost\" + $VolumeToChange.Substring(0,1) + '$'
                 for ( $i = 0 ; $i -lt $ShadowCopyList.Count; $i++ ){
                     $SingleGMTString = "@GMT-" + $ShadowCopyList[$i].InstallDate.ToUniversalTime().ToString("yyyy.MM.dd-HH.mm.ss")
