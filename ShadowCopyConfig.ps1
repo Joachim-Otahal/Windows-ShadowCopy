@@ -167,7 +167,7 @@ do {
 
     # Fill in which volume has which settings
 
-    for ( $i=0 ; $i -lt $Volumes.Count -2; $i++) {
+    for ( $i=0 ; $i -lt $Volumes.Count; $i++) {
         $ShadowStorageSingle = $ShadowStorage.Where({$_.Volume.DeviceID -eq $Volumes[$i].DeviceID})[0]
         if ($ShadowStorageSingle.Volume -ne $null) {
             $Volumes[$i].Active         = "Yes"
