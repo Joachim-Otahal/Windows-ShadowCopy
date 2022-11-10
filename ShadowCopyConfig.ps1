@@ -185,7 +185,7 @@ do {
 
 
     # Build Output-Table Array as strings
-    @($TableArray = $Volumes | select Volume,Label,Active,Shadows,Allocated,Maximum,Diffvolume)
+    $TableArray = @($Volumes | select Volume,Label,Active,Shadows,Allocated,Maximum,Diffvolume)
     # Change everything to string needed...
     for ( $i=0 ; $i -lt $TableArray.Count; $i++) {
         $TableArray[$i].Volume = $Volumes[$i].Name
