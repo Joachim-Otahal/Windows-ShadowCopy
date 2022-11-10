@@ -48,12 +48,13 @@
 # Whether it will create every 2 hours or twice a day depends on your scheduled task. Can be every Minute if you want to kill your performance.
 
 # Versionlog:
-# 1.0 Joachim Otahal 19th to 23rd March 2022
-# 1.1 replace -Confirm with -Cleanup to be clearer
-# 1.2 Default job is created with full command line, not relying in defaults in this script
-# 1.3 Cleanup logs older than 30 days, assume scriptlocation as log location
-# 1.4 Use NTFS Compression on the logs. C# part: https://stackoverflow.com/questions/31032834/set-file-compression-attribute / https://stackoverflow.com/users/7021/sam
-#     Stupid bug at loglist cleanup, causing errormessage when there is nothing to clean up
+# 1.0   Joachim Otahal 19th to 23rd March 2022
+# 1.1   replace -Confirm with -Cleanup to be clearer
+# 1.2   Default job is created with full command line, not relying in defaults in this script
+# 1.3   Cleanup logs older than 30 days, assume scriptlocation as log location
+# 1.4   Use NTFS Compression on the logs. C# part: https://stackoverflow.com/questions/31032834/set-file-compression-attribute / https://stackoverflow.com/users/7021/sam
+#       Stupid bug at loglist cleanup, causing errormessage when there is nothing to clean up
+# 1.4.1 Fixed a but when the computer has only one volume (and other similar one-item-only bugs)
 
 param (
     [int]$KeepDaily = 2,
@@ -106,12 +107,15 @@ public static class FileTools
 
 $Kernel32 = Add-Type -MemberDefinition $MethodDefinition -Name ‘Kernel32’ -Namespace ‘Win32’ -PassThru
 
-#################### Konstants
+#################### Constants
 
 $TimeStamp = Get-Date
 $ScriptName = $MyInvocation.MyCommand.Name
+if ($ScriptName -eq $null) { $ScriptName = $psISE.CurrentFile.DisplayName.Replace('*','') }
 if (!$LogPath) {
-    $LogPath = $MyInvocation.MyCommand.Path | Split-Path
+    $ScriptLocation = $MyInvocation.MyCommand.Path
+    if ($ScriptLocation -eq $null) { $ScriptLocation = $psISE.CurrentFile.FullPath }
+    $LogPath = $ScriptLocation | Split-Path
 }
 
 #################### Functions
@@ -184,10 +188,10 @@ $CurrentTimeUTCDateOnly=$CurrentTimeUTC.ToString('yyyy-MM-dd') | Get-Date
 
 # Get Info
 
-$ShadowStorage = Get-CimInstance Win32_ShadowStorage
-$VolumesWithoutShadows =  (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object Name
-$Volumes = (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -contains $_.DeviceID}) | Sort-Object Name
-$ShadowCopyFullList = Get-CimInstance Win32_ShadowCopy
+$ShadowStorage = @(Get-CimInstance Win32_ShadowStorage)
+$VolumesWithoutShadows =  @((Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object Name)
+$Volumes = @((Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -contains $_.DeviceID}) | Sort-Object Name)
+$ShadowCopyFullList = @(Get-CimInstance Win32_ShadowCopy)
 if ([Environment]::UserInteractive) {
     foreach ($Volume in $VolumesWithoutShadows.Where({$_.Name -ilike "?:*"})) {
         Write-Verbose-and-Log "Volume $($Volume.Name) has no active shadowcopy - activate? (yes/ja / no/nein, 10 seconds timeout)"
@@ -220,15 +224,15 @@ foreach ($Volume in $Volumes) {
     if (!$Cleanup) { Write-Verbose-and-Log ('-Cleanup is not set to $true, no schadowcopies for ' + "$($Volume.Name) will be deleted") }
     # Clean up old schadowcopies
     # We add a "only Day exact, no time" field as System.DateTime datafield, force sort by date newest at the end (should be anyway, but I don't trust it)
-    $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) |
+    $ShadowCopyList = @($ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) |
         Select-Object *,@{Name="InstallDateUTC";Expression={$_.InstallDate.ToUniversalTime()}},@{Name="InstallDateUTCDateOnly";Expression={$_.InstallDate.ToUniversalTime() | 
-        Get-Date -Format yyyy-MM-dd | Get-Date}} | Sort-Object InstallDate
+        Get-Date -Format yyyy-MM-dd | Get-Date}} | Sort-Object InstallDate)
 
     if ($ShadowCopyList.Count -gt 0) {
         # After $KeepDaily days: Keep only last schadowcopy of the day, after eight days keep only even days
         for ($AddDays = -$KeepDaily; $CurrentTimeUTCDateOnly.AddDays($AddDays+1) -gt $ShadowCopyList[0].InstallDateUTCDateOnly ; $AddDays--) {
             # Wenn > $AddDays Tage alt und mehr als ein schadowcopy da dann nuke alles vor den letzten schadowcopy am Tag.
-            $ShadowCopyPerDay = $ShadowCopyList.Where({$_.InstallDateUTCDateOnly -eq $CurrentTimeUTCDateOnly.AddDays($AddDays)})
+            $ShadowCopyPerDay = @($ShadowCopyList.Where({$_.InstallDateUTCDateOnly -eq $CurrentTimeUTCDateOnly.AddDays($AddDays)}))
             if ($ShadowCopyPerDay.Count -gt "0" ) {
                 $KeepNotify = $true
                 # Nuke all daily except the last of the day
@@ -254,8 +258,8 @@ foreach ($Volume in $Volumes) {
     }
     # Is the amount of shadowcopies still above MaximumShadowCopies? If yes, refresh shadowcopy list and remove those too many.
     if ($MaximumShadowCopiesVolume -lt 0 -or $ShadowCopyList.Count -gt $MaximumShadowCopies) {
-        $ShadowCopyFullList = Get-CimInstance Win32_ShadowCopy
-        $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) | Sort-Object InstallDate
+        @($ShadowCopyFullList = Get-CimInstance Win32_ShadowCopy)
+        $ShadowCopyList = @($ShadowCopyFullList.Where({$_.VolumeName -eq $Volume.DeviceID}) | Sort-Object InstallDate)
         Write-Verbose-and-Log "$($Volume.Name) Delete: Shadowcopies $($ShadowCopyList[0..($ShadowCopyList.Count - $MaximumShadowCopies - 1)].InstallDate) exceeding the maximum number of $MaximumShadowCopies."
         if ($Cleanup) {
             for ($i = 0 ; $i -lt $MaximumShadowCopies - 1; $i++) {

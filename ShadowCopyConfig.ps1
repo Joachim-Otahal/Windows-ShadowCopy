@@ -30,6 +30,7 @@
 #                 that now correctly.
 # 0.6 July   2022 Addressing the fact that Windows 10 and 11 ignore the registry value "MaxShadowCopy" and only offer a maximum of 16 or 8 Shadowcopies.
 # 0.7 Sept   2022 Beautfy the table output method.
+# 0.7.1 Nov  2022 Fixed a simple bug when the computer only has one volume (and other similar one-item-only bugs)
 
 #### Typedefinition to NtFsControlFile/CreateFileW
 
@@ -161,7 +162,7 @@ do {
     $MaxShadowCopies = (Get-ItemProperty -Path $RegistryPath).MaxShadowCopies
     # we have to force the array, with only one entry it does not array it
     $ShadowStorage = @(Get-CimInstance Win32_ShadowStorage)
-    #$VolumesWithoutShadows =  (Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object DriveLetter
+    #$VolumesWithoutShadows = @((Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $ShadowStorage.Volume.DeviceID -notcontains $_.DeviceID}) | Sort-Object DriveLetter)
     $Volumes = @((Get-CimInstance Win32_Volume).Where({$_.FileSystem -eq "NTFS" -and $_.Name -ilike "?:*"}) | Select-Object Name,Label,DeviceID,Capacity,FreeSpace,Active,Shadows,AllocatedSpace,MaxSpace,UsedSpace,Volume,DiffVolume | Sort-Object Name)
     $ShadowCopyFullList = @(Get-CimInstance Win32_ShadowCopy)
 
@@ -184,7 +185,7 @@ do {
 
 
     # Build Output-Table Array as strings
-    $TableArray = $Volumes | select Volume,Label,Active,Shadows,Allocated,Maximum,Diffvolume
+    @($TableArray = $Volumes | select Volume,Label,Active,Shadows,Allocated,Maximum,Diffvolume)
     # Change everything to string needed...
     for ( $i=0 ; $i -lt $TableArray.Count; $i++) {
         $TableArray[$i].Volume = $Volumes[$i].Name
@@ -217,7 +218,7 @@ do {
 
     Write-Host "Choose Volume by Driveletter or Mountpoint.`nMAX to change registry for maximum number of shadow copies per volume."
     $VolumeToChange = ((Read-Host 'EXIT to quit.') -replace '[^a-zA-Z:\\]','').ToUpper()
-    if ($VolumeToChange -notlike "EXI*" -and $VolumeToChange -notlike "QUI*"-and $VolumeToChange -notlike "MAX*") {
+    if ($VolumeToChange -notlike "EXI*" -and $VolumeToChange -notlike "QUI*"-and $VolumeToChange -notlike "MAX*" -and $VolumeToChange.Length -gt 0) {
         $VolumeToChange = $Volumes.Where({$_.Name -ilike "$VolumeToChange*" -and $_.DeviceID -ne ""})[0].Name
         if ($VolumeToChange -eq $null) {
             Write-Host -BackgroundColor DarkRed " That Volume does not exist "
@@ -246,7 +247,7 @@ do {
                 Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName "Create" -Arguments @{Volume=$VolumeToChange} -Verbose | Out-String
             }
             if ($inputhost -eq "D") {
-                $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID })
+                $ShadowCopyList = @($ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID }))
                 Write-Host -BackgroundColor Red "Delete $($ShadowCopyList.Count) shadowcopies and deactivate for Volume $($VolumeToChange) (y/n):" -NoNewline
                 $inputhost2 = ((Read-Host) -replace '[^yY]','').ToUpper()
                 if ($inputhost2 -eq "Y") {
@@ -293,7 +294,7 @@ do {
                 Set-CimInstance -InputObject $ShadowStorage.Where({$_.Volume.DeviceID -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID })[0]
             }
             if ($inputhost -eq "R") {
-                $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID })
+                $ShadowCopyList = @($ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID }))
                 for ( $i = 0 ; $i -lt $ShadowCopyList.Count; $i++ ){
                     Write-Host "Shadowcopy Number $i : $($ShadowCopyList[$i].InstallDate | get-date -format "yyyy-MM-dd HH:mm:ss")"
                 }
@@ -306,7 +307,7 @@ do {
                 }
             }
             if ($inputhost -eq "B" -or $inputhost -eq "O") {
-                $ShadowCopyList = $ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID }) | Select-Object *,DirectPath | Sort-Object InstallDate -Descending
+                $ShadowCopyList = @($ShadowCopyFullList.Where({$_.VolumeName -eq $Volumes.Where({$_.Name -eq $VolumeToChange})[0].DeviceID }) | Select-Object *,DirectPath | Sort-Object InstallDate -Descending)
                 $ShadowCopyBasePath = "\\localhost\" + $VolumeToChange.Substring(0,1) + '$'
                 for ( $i = 0 ; $i -lt $ShadowCopyList.Count; $i++ ){
                     $SingleGMTString = "@GMT-" + $ShadowCopyList[$i].InstallDate.ToUniversalTime().ToString("yyyy.MM.dd-HH.mm.ss")
