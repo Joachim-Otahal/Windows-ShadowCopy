@@ -17,13 +17,13 @@
 #>
 
 # Versionlog:
-# 0.1 March  2022 Inital version Joachim Otahal
+# 0.1 March  2022 Inital version Joachim Otahal, noticed bug "MaxValue stored my CIM is not uint64 max, it is int64 max. https://github.com/MicrosoftDocs/windowsserverdocs/issues/6370
 # 0.2             A little cleanup, Menu adjustment for 80 character screen, browse shows ISO8601 like date, path copy to clipboard
 # 0.3 April  2022 Handle volumes mounted in a directory correct, show number of shadowcopies, better menu formatting.
 #                 Solving the problem to be unable to access the \\localhost\<drive>$\@GMT path first time after a reboot using:
 #                 https://gist.github.com/jborean93/f60da33b08f8e1d5e0ef545b0a4698a0
 #                 These Parts (c) 2019, Jordan Borean (@jborean93) <jborean93@gmail.com>
-# 0.4 April  2022 Adding Registry setting for MaxShadowCopies
+# 0.4 April  2022 Adding Registry setting for MaxShadowCopies.
 # 0.5 June   2022 Nice, Windows Insider Build 22621.105 introduced a bug where "Previous version" within Explorer does not work on
 #                 a local system. Either NtFsControlFile or CreateFileW is broken, so the explorer doesn't show it, and this script
 #                 throws errors where it should not. This exposed a bug where this script does not get the Win32 error. Handling
@@ -208,11 +208,11 @@ do {
     Output-SimpleTable $TableArray
 
     if ($MaxShadowCopies -eq $null) {
-        Write-Host "# Registry value for MaxShadowCopies not set. Default is 16 for clients OS, 64 for server OS."
+        Write-Host "# Registry value for MaxShadowCopies not set. Default is 64, and maximum of seven days for client OS."
     } else {
         Write-Host "# Registry value for MaxShadowCopies is $MaxShadowCopies."
         if ($ComputerInfo.Caption -notlike "*Server*") {
-            Write-Host -BackgroundColor DarkRed "This computer running $($ComputerInfo.Caption). You might be limited to seven days or fifteen days of shadowcopies."
+            Write-Host -BackgroundColor DarkRed "This computer running $($ComputerInfo.Caption). You might be limited to seven days of shadowcopies."
         }
     }
 
@@ -346,7 +346,7 @@ do {
                     $Exception = New-Object -TypeName System.ComponentModel.Win32Exception -ArgumentList $Win32Error
                     $ExceptionMessage = "{0} (Win32 ErrorCode {1} - 0x{1:X8})" -f $Exception.Message, $Win32Error
                     Write-Error -Message "NtFsControlFile failed - $ExceptionMessage"
-                    Write-Verbose 'Up to now Windows 11, insider builds 22621.*, seem to have a bug accessing "Previous Versions" within the file explorer and this tool.' -Verbose
+                    Write-Verbose 'Up to now Windows 11 builds 22621.* and 22623.*, seem to have a bug accessing "Previous Versions" within the file explorer and this tool.' -Verbose
                 }
                 # Cleanup handles
                 [System.Runtime.InteropServices.Marshal]::FreeHGlobal($OutBuffer)
