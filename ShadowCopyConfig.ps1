@@ -31,6 +31,7 @@
 # 0.6 July   2022 Addressing the fact that Windows 10 and 11 ignore the registry value "MaxShadowCopy" and only offer a maximum of 16 or 8 Shadowcopies.
 # 0.7 Sept   2022 Beautfy the table output method.
 # 0.7.1 Nov  2022 Fixed a simple bug when the computer only has one volume (and other similar one-item-only bugs)
+# 0.8   Jul  2023 Made the "Select volume" a menu where you can your the cursor keys.
 
 #### Typedefinition to NtFsControlFile/CreateFileW
 
@@ -120,34 +121,109 @@ if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
 
 #### Functions
 
+# Old Output-SimpleTable not used any more...
 Function Output-SimpleTable {
     param (
-    [parameter(Mandatory)][Object]$TableArray
+    [parameter(Mandatory)][Object]$MenuArray
     )
-    $headers = $TableArray[0].PSObject.Properties.Name 
-    $TableCount = $TableArray.Count
-    $TableArray += $TableArray[0] | Select-Object *
+    $headers = $MenuArray[0].PSObject.Properties.Name 
+    $TableCount = $MenuArray.Count
+    $MenuArray += $MenuArray[0] | Select-Object *
     # Check maximum length
     foreach ($header in $headers) {
-        $TableArray[-1].$header = $header.Length
+        $MenuArray[-1].$header = $header.Length
         for ($i = 0;$i -lt $TableCount; $i++) {
-            if ($TableArray[$i].$header.length -gt $TableArray[-1].$header) {
-                $TableArray[-1].$header = $TableArray[$i].$header.length
+            if ($MenuArray[$i].$header.length -gt $MenuArray[-1].$header) {
+                $MenuArray[-1].$header = $MenuArray[$i].$header.length
             }
         }
     }
-    for ($i = -2;$i -lt $TableArray.Count; $i++) {
+    for ($i = -2;$i -lt $MenuArray.Count; $i++) {
         $outputstring = ""
         foreach ($header in $headers) {
             switch($i) {
-                {$_ -eq -2 -or $_ -eq $TableCount} { $outputstring = $outputstring + "#"*($TableArray[-1].$header+3) }
-                -1                                 { $outputstring = $outputstring + "# $header" + " "*($TableArray[-1].$header - $header.Length)+" " }
-                Default                            { $outputstring = $outputstring + "# $($TableArray[$i].$header)" + " "*($TableArray[-1].$header - $TableArray[$i].$header.Length)+" " }
+                {$_ -eq -2 -or $_ -eq $TableCount} { $outputstring = $outputstring + "#"*($MenuArray[-1].$header+3) }
+                -1                                 { $outputstring = $outputstring + "# $header" + " "*($MenuArray[-1].$header - $header.Length)+" " }
+                Default                            { $outputstring = $outputstring + "# $($MenuArray[$i].$header)" + " "*($MenuArray[-1].$header - $MenuArray[$i].$header.Length)+" " }
            }
         }
         $outputstring = $outputstring + "#"
         Write-Host $outputstring
     }
+}
+
+Function Get-SimpleMenu {
+    param (
+    [parameter(Mandatory)][Object]$MenuArray,
+    [int]$MenuLine=0,
+    [string]$MenuBottom = ""
+    )
+    $headers = $MenuArray[0].PSObject.Properties.Name 
+    $TableCount = $MenuArray.Count
+    $MenuArray += $MenuArray[0] | Select-Object *
+    # Check maximum length
+    foreach ($header in $headers) {
+        $MenuArray[-1].$header = $header.Length
+        for ($i = 0;$i -lt $TableCount; $i++) {
+            if ($MenuArray[$i].$header.length -gt $MenuArray[-1].$header) {
+                $MenuArray[-1].$header = $MenuArray[$i].$header.length
+            }
+        }
+    }
+    do {
+        $ExitCondition = $true
+        Clear-Host
+        for ($i = -2;$i -lt $MenuArray.Count; $i++) {
+            $outputstring = ""
+            foreach ($header in $headers) {
+                switch($i) {
+                    {$_ -eq -2 -or $_ -eq $TableCount} { $outputstring = $outputstring + "#"*($MenuArray[-1].$header+3) }
+                    -1                                 { $outputstring = $outputstring + "# $header" + " "*($MenuArray[-1].$header - $header.Length)+" " }
+                    Default                            { $outputstring = $outputstring + "# $($MenuArray[$i].$header)" + " "*($MenuArray[-1].$header - $MenuArray[$i].$header.Length)+" " }
+               }
+            }
+
+            $outputstring = $outputstring + "#"
+            if ($i -eq $MenuLine) {
+                Write-Host -BackgroundColor DarkGreen $outputstring
+            } else {
+                Write-Host $outputstring
+            }
+        }
+        Write-Host $MenuBottom
+        if (!$psISE) {
+            $host.UI.RawUI.FlushInputBuffer()
+            $key = $null
+            # Wait for cursor / enter
+            while(!($key)) {
+                if($host.UI.RawUI.KeyAvailable) {
+                    $key = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyUp")
+                }
+                Start-Sleep -Milliseconds 100
+            }
+            $KeyPressed = $key.VirtualKeyCode
+        } else {
+            $KeyPressed = [int](Read-Host "Powershell ISE, enter KEYCODE. 27 ESC, 38 Up, 40 Down, 77 M, 81 Q, 88 X.")
+        }
+        # 74 = Ja, 77=m, 80 = q, 88 = x, 89 = Yes
+        # 37 = Cursor Left, 38 = Cursor Up, 39 = Cursor Right, 40 = Cursor Down
+        switch ($KeyPressed) {
+            40  {
+                    $ExitCondition = $false
+                    if ($MenuLine -lt ($TableCount -1)) {$MenuLine++}
+                }
+            38  {
+                    $ExitCondition = $false
+                    if ($MenuLine -gt 0) {$MenuLine--}
+                }
+            27  { $MenuLine = -1 }
+            81  { $MenuLine = -1 }
+            88  { $MenuLine = -1 }
+            77  { $MenuLine = 10000 }
+            default {}
+        }
+    } until ($ExitCondition)
+    return $MenuLine
 }
 
 # Get Info
@@ -156,6 +232,9 @@ Function Output-SimpleTable {
 Write-Verbose "Gathering information..." -Verbose
 
 $ComputerInfo = Get-WmiObject -class Win32_OperatingSystem | Select-Object *
+
+# Which is the first selected menuitem
+$MenuLine=0
 
 do {
     # Get maximumshadowcopies from registry
@@ -185,44 +264,61 @@ do {
 
 
     # Build Output-Table Array as strings
-    $TableArray = @($Volumes | select Volume,Label,Active,Shadows,Allocated,Maximum,Diffvolume)
+    $MenuArray = @($Volumes | select Volume,Label,Active,Shadows,Allocated,Maximum,Diffvolume)
     # Change everything to string needed...
-    for ( $i=0 ; $i -lt $TableArray.Count; $i++) {
-        $TableArray[$i].Volume = $Volumes[$i].Name
-        if ($TableArray[$i].Shadows) {$TableArray[$i].Shadows = $TableArray[$i].Shadows.ToString()}
-        $TableArray[$i].Allocated = "$([UInt64]($Volumes[$i].AllocatedSpace / 1073741824)) GB"
+    for ( $i=0 ; $i -lt $MenuArray.Count; $i++) {
+        $MenuArray[$i].Volume = $Volumes[$i].Name
+        if ($MenuArray[$i].Shadows) {$MenuArray[$i].Shadows = $MenuArray[$i].Shadows.ToString()}
+        $MenuArray[$i].Allocated = "$([UInt64]($Volumes[$i].AllocatedSpace / 1073741824)) GB"
         if ($Volumes[$i].MaxSpace -eq 18446744073709551615 -or $Volumes[$i].MaxSpace -eq 9223372036854775807) {
-            $TableArray[$i].Maximum = "No Limit"
+            $MenuArray[$i].Maximum = "No Limit"
         } else {
-            $TableArray[$i].Maximum = "$([UInt64]($Volumes[$i].MaxSpace / 1073741824)) GB"
+            $MenuArray[$i].Maximum = "$([UInt64]($Volumes[$i].MaxSpace / 1073741824)) GB"
         }
-        if ($TableArray[$i].Active -eq "Yes") {
+        if ($MenuArray[$i].Active -eq "Yes") {
             if ( $Volumes[$i].DiffVolume.DeviceID -eq $Volumes[$i].DeviceID ) {
-                $TableArray[$i].DiffVolume = "Same"
+                $MenuArray[$i].DiffVolume = "Same"
             } else {
-                $TableArray[$i].DiffVolume  = "$($Volumes[$i].DiffVolume.DeviceID)"
+                $MenuArray[$i].DiffVolume  = "$($Volumes[$i].DiffVolume.DeviceID)"
             }
         }
     }
 
-    Output-SimpleTable $TableArray
-
+    $MenuBottom = "Use cursor + enter to select, X or Q to quit, M to change registry for maximum number of shadow copies per volume.`n"
     if ($MaxShadowCopies -eq $null) {
-        Write-Host "# Registry value for MaxShadowCopies not set. Default is 64, and maximum of seven days for client OS."
+        $MenuBottom += "Registry value for MaxShadowCopies not set. Default is 64, and maximum of seven days for client OS."
     } else {
-        Write-Host "# Registry value for MaxShadowCopies is $MaxShadowCopies."
+        $MenuBottom += "Registry value for MaxShadowCopies is $MaxShadowCopies."
         if ($ComputerInfo.Caption -notlike "*Server*") {
-            Write-Host -BackgroundColor DarkRed "This computer running $($ComputerInfo.Caption). You might be limited to seven days of shadowcopies."
+            $MenuBottom += " This computer running $($ComputerInfo.Caption). You might be limited to seven days of shadowcopies."
         }
     }
 
-    Write-Host "Choose Volume by Driveletter or Mountpoint.`nMAX to change registry for maximum number of shadow copies per volume."
-    $VolumeToChange = ((Read-Host 'EXIT to quit.') -replace '[^a-zA-Z:\\]','').ToUpper()
-    if ($VolumeToChange -notlike "EXI*" -and $VolumeToChange -notlike "QUI*"-and $VolumeToChange -notlike "MAX*" -and $VolumeToChange.Length -gt 0) {
-        $VolumeToChange = $Volumes.Where({$_.Name -ilike "$VolumeToChange*" -and $_.DeviceID -ne ""})[0].Name
-        if ($VolumeToChange -eq $null) {
-            Write-Host -BackgroundColor DarkRed " That Volume does not exist "
-        } else {
+    $MenuSelect = Get-SimpleMenu -MenuArray $MenuArray -MenuLine $MenuLine -MenuBottom $MenuBottom
+    
+    switch ($MenuSelect) {
+        -1  { }
+        10000 {
+            If ($MaxShadowCopies -eq $null) {
+                Write-Host "Value is not set. Default is 16 for client OS, 64 for server OS."
+            } 
+            $inputhost = [int]((Read-Host "Set new MaxShadowCopies value from 1 to 512. 0 to clear the value from the registy.") -replace '[^0-9]','')
+            if ($inputhost -eq 0) {
+                Remove-ItemProperty -Path $RegistryPath -Name MaxShadowCopies -Verbose -ErrorAction Ignore
+            }
+            if ($inputhost -gt 0 -and $inputhost -le 512) {
+                if ($MaxShadowCopies -eq $null) {
+                    New-ItemProperty -Path $RegistryPath -Name "MaxShadowCopies" -PropertyType DWord -Value $inputhost
+                } else {
+                    Set-ItemProperty -Path $RegistryPath -Name "MaxShadowCopies" -Value $inputhost -Verbose
+                }
+            }
+            
+        }
+        DEFAULT {
+            $MenuLine = $MenuSelect
+            $VolumeToChange = $Volumes[$MenuLine].Name
+
             Write-Host -BackgroundColor DarkGreen " Selected Volume $VolumeToChange "
             Write-Host -ForegroundColor Yellow -BackgroundColor DarkGray -NoNewline "A"
             Write-Host -NoNewline "ctivate, "
@@ -363,25 +459,10 @@ do {
                         & "$env:SystemRoot\Explorer.exe" "$($ShadowCopyList[$inputhost2].DirectPath)"
                         Set-Clipboard -Value $ShadowCopyList[$inputhost2].DirectPath -Verbose
                         Write-Host -BackgroundColor DarkGreen "Path $($ShadowCopyList[$inputhost2].DirectPath) has been copied to clipboard, ready to paste in Explorer/CMD/Powershell"
+                        $null = Read-Host "Press ENTER or RETURN to continue"
                     }
                 }
             }
         }
     }
-    if ($VolumeToChange -like "MAX*") {
-        If ($MaxShadowCopies -eq $null) {
-            Write-Host "Value is not set. Default is 16 for client OS, 64 for server OS."
-        } 
-        $inputhost = [int]((Read-Host "Set new MaxShadowCopies value from 1 to 512. 0 to clear the value from the registy.") -replace '[^0-9]','')
-        if ($inputhost -eq 0) {
-            Remove-ItemProperty -Path $RegistryPath -Name MaxShadowCopies -Verbose -ErrorAction Ignore
-        }
-        if ($inputhost -gt 0 -and $inputhost -le 512) {
-            if ($MaxShadowCopies -eq $null) {
-                New-ItemProperty -Path $RegistryPath -Name "MaxShadowCopies" -PropertyType DWord -Value $inputhost
-            } else {
-                Set-ItemProperty -Path $RegistryPath -Name "MaxShadowCopies" -Value $inputhost -Verbose
-            }
-        }
-    }
-} until ($VolumeToChange -eq "EXIT" -or $VolumeToChange -eq "QUIT")
+} until ($MenuSelect -eq -1)
