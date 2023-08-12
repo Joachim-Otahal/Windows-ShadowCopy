@@ -32,6 +32,7 @@
 # 0.7 Sept   2022 Beautfy the table output method.
 # 0.7.1 Nov  2022 Fixed a simple bug when the computer only has one volume (and other similar one-item-only bugs)
 # 0.8   Jul  2023 Made the "Select volume" a menu where you can your the cursor keys.
+# 0.8.1 Aug  2023 Tiny improvements when running in Powershell ISE in "debus more".
 
 #### Typedefinition to NtFsControlFile/CreateFileW
 
@@ -113,8 +114,12 @@ if ($PSVersionTable.PSVersion.Major -lt 4) {
 #################### Check elevated
 
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-    Write-Verbose "Not running with administrator rights." # -Verbose
-    Start-Process Powershell -ArgumentList $PSCommandPath -Verb RunAs
+    Write-Verbose "Not running with administrator rights." -Verbose
+    if (!$psISE) {
+        Start-Process Powershell -ArgumentList $PSCommandPath -Verb RunAs
+    } else {
+        $null = Read-Host "Please start this script with admin rights. Press enter to exit."
+    }
     #Start-Sleep 20
     break
 }
@@ -203,7 +208,17 @@ Function Get-SimpleMenu {
             }
             $KeyPressed = $key.VirtualKeyCode
         } else {
-            $KeyPressed = [int](Read-Host "Powershell ISE, enter KEYCODE. 27 ESC, 38 Up, 40 Down, 77 M, 81 Q, 88 X.")
+            $KeyPressed = Read-Host "Powershell ISE detected, use W-S-A-D as cursor, or enter the key or KEYCODE"
+            switch ($KeyPressed) {
+                'w' {$KeyPressed = 38}
+                's' {$KeyPressed = 40}
+                'a' {$KeyPressed = 65}
+                'd' {$KeyPressed = 68}
+                'm' {$KeyPressed = 77}
+                'q' {$KeyPressed = 81}
+                'x' {$KeyPressed = 88}
+                default {$KeyPressed = [int]($KeyPressed -replace "[^0-9]","")}
+            }
         }
         # 74 = Ja, 77=m, 80 = q, 88 = x, 89 = Yes
         # 37 = Cursor Left, 38 = Cursor Up, 39 = Cursor Right, 40 = Cursor Down
@@ -284,14 +299,14 @@ do {
         }
     }
 
-    $MenuBottom = "Use cursor + enter to select, X or Q to quit, M to change registry for maximum number of shadow copies per volume.`n"
+    $MenuBottom = "Use cursor + enter to select, X or Q to quit, M to change registry MaxShadowCopies.`n"
     if ($MaxShadowCopies -eq $null) {
-        $MenuBottom += "Registry value for MaxShadowCopies not set. Default is 64, and maximum of seven days for client OS."
+        $MenuBottom += "Registry value for MaxShadowCopies not set. Default is 64."
     } else {
         $MenuBottom += "Registry value for MaxShadowCopies is $MaxShadowCopies."
-        if ($ComputerInfo.Caption -notlike "*Server*") {
-            $MenuBottom += " This computer running $($ComputerInfo.Caption). You might be limited to seven days of shadowcopies."
-        }
+    }
+    if ($ComputerInfo.Caption -notlike "*Server*") {
+        $MenuBottom += " `nThis computer running $($ComputerInfo.Caption), so you might be limited to seven days of shadowcopies."
     }
 
     $MenuSelect = Get-SimpleMenu -MenuArray $MenuArray -MenuLine $MenuLine -MenuBottom $MenuBottom
