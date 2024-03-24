@@ -4,6 +4,10 @@ Both have been tested with Powershell 3.0 and 5.1 on Server 2008 (without R2), V
 Due to a bug in Windows 11 22H2 it does not work well with that version. Windows 11 21H2 does not have this bug.
 See here: https://learn.microsoft.com/en-us/answers/questions/935493/windows-11-all-22h2-builds-explorer-exe-previous-v?page=3
 
+## UPDATE
+Windows 11 23H2 22631.3371 Release Preview Insider Build has that fix for Shadowcopy! Finally, after one year and ten month. So the regular April or May update will have it officially.
+Thanks go to Mr P. K. from Microsoft Germany, who saw my constant complaining, reproduced it, and made it a bug-that-needs-to-be-fixed.
+
 # ShadowCopyConfig.ps1
 
 This is the config tool, in the end replaces the former VSSUIRUN which is still on Server, but not on client OS.
